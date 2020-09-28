@@ -142,3 +142,6 @@ cython_debug/
 
 # We don't commit our database to VCS
 databases/%
+
+# Bunch of images that we don't want.
+Test/
