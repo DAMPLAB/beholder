@@ -29,7 +29,7 @@ import scipy.sparse
 import cv2 as cv
 from io import StringIO
 
-from scipy import convolve
+from scipy.signal import convolve
 
 ############################################################################
 #globals

@@ -18,7 +18,7 @@ from io import StringIO
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 
-from scipy import convolve
+from scipy.signal import convolve
 
 import os
 
