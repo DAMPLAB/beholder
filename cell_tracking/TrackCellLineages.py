@@ -22,7 +22,7 @@ from scipy.signal import convolve
 
 # globals
 # used to keep track of which frames have fluorescence images
-FLFILES = []
+FLUORESCENCE_FILES = []
 FILTERWINDOW = 10
 
 
@@ -172,7 +172,7 @@ def lineage_pipeline(
 
     # xy label
     # TODO: I don't know why.
-    i_xy = 5
+    i_xy = 0
 
     # output name for cell statistics csv
     cell_statistics_csv = 'iXY' + str(i_xy) + '_cell_statistics.csv'
@@ -182,10 +182,11 @@ def lineage_pipeline(
     # fluorescence channels (used in filenames)
     # used to get string in filename below.
     # TODO: Use our stuff to pull out the channel names.
-    fluorescent_channels = ['YFP', 'CFP', 'mCherry']
+    # fluorescent_channels = ['YFP', 'CFP', 'mCherry']
+    fluorescent_channels = [0, 1, 2]
 
     # fluorescence image
-    fluorescent_file_format = file_prefix + '%06dxy%dc%d.tif'
+    fluorescent_file_format = '/' + file_prefix + '%06dxy%dc%d.tiff'
 
     # the number for the first frame in the dataset
     # Jx - TODO: We need to use the glob of the images to get this via sort.
@@ -194,7 +195,7 @@ def lineage_pipeline(
     frame_skip = 1
     # the number of the last frame in the dataset
     # Jx - TODO: Same as above, just get the length of the files via the glob.
-    frame_max = 29
+    frame_max = 10
 
     # limits on the area of cells to consider
     # Jx - TODO: You probably need to pull out ImageJ to get the rough
@@ -219,48 +220,49 @@ def lineage_pipeline(
     # that means that they're chunked like:
     # Frame | Grayscale -> Fl_Channel_1 -> Fl_Channel_2 -> Fl_Channel_3 | into
     # next frame.
-    fluorescent_frame_stride = 6
+    fluorescent_frame_stride = 2
     fluorescent_skip = fluorescent_frame_stride
     # the first frame that has a fluorescence image
-    fluorescent_initial_image = 55
+    fluorescent_initial_image = 1
 
     # minimum trajectory length (in actual segmented frames)
     min_trajectory_length = 10  # frames
 
-    def getLabeledMask(iFRAME):
+    def get_labeled_mask(frame_index):
 
-        global FLFILES
+        global FLUORESCENCE_FILES
 
         # get segmentation data
-        filename = file_format % (iFRAME, i_xy, 1)
-        img = imageio.imread(filename)
-        # print 'loaded label file', iFRAME, ' with dimensions', img.shape
+        file_name = file_format % (frame_index, i_xy, 1)
+        img = imageio.imread(file_name)
         img = 255 - img
 
         # get fluorescence data
-        imgFLALL = []
-        for icf in fluorescent_channels:
-            if ((iFRAME - fluorescent_initial_image) % fluorescent_skip == 0) and (iFRAME >= fluorescent_initial_image):
-                filename = root_directory + fluorescent_file_format % (iFRAME, i_xy, icf)
+        image_fluorescence_list = []
+        for fl_index in fluorescent_channels:
+            if (
+                    (frame_index - fluorescent_initial_image) % fluorescent_skip == 0
+            ) and (frame_index >= fluorescent_initial_image):
+                file_name = root_directory + fluorescent_file_format % (frame_index, i_xy, fl_index)
                 # print filename
-                imgFL = imageio.imread(filename)
-                FLFILES.append(iFRAME)
+                fluorescent_image = imageio.imread(file_name)
+                FLUORESCENCE_FILES.append(frame_index)
             else:
-                imgFL = None
+                fluorescent_image = None
 
             # print 'loaded fluorescence file', iFRAME, ' with dimensions', imgFL.shape
-            imgFLALL.append(imgFL)
+            image_fluorescence_list.append(fluorescent_image)
 
         # unpack segmentation data, after labeling
         label, nlabels = ndimage.label(img)
 
-        return (label, nlabels, imgFLALL)
+        return label, nlabels, image_fluorescence_list
 
     ############################################################################
     ############################################################################
 
     # gets center of mass (CoM) and area for each object
-    def getObjectStats(label, nlabels, FLALL, i, iFRAME):
+    def getObjectStats(label, nlabels, FLALL, i, iFRAME, echo):
         # measure center of mass and area
         comXY = ndimage.center_of_mass(label * 0 + 1.0, label, list(range(nlabels)))
         AREA = ndimage.sum(label * 0 + 1.0, label, list(range(nlabels)))
@@ -269,7 +271,7 @@ def lineage_pipeline(
         FLMEASURE = []
 
         if fluorescent_initial_image != 0:
-            if iFRAME in FLFILES:
+            if iFRAME in FLUORESCENCE_FILES:
                 for img in FLALL:
                     flint = ndimage.sum(img, label, list(range(nlabels)))
                     flmean = flint / AREA
@@ -292,6 +294,7 @@ def lineage_pipeline(
 
     # for a given index (i2), compute overlap with all i1 indices
     def getMetricOverlap(ARG):
+        print('A')
 
         i2, label1, label2, nlabels1, nlabels2, comXY1, comXY2 = ARG
 
@@ -321,47 +324,66 @@ def lineage_pipeline(
         # overlap0 = ndimage.sum(label2==i2, label2, [i2,])
         # if (np.max(overlap)/np.max(overlap0) > 1.0):
         #	print np.max(overlap)/np.max(overlap0)
-
+        print('B')
         return overlap
 
     ############################################################################
     ############################################################################
 
-    def runOnce(iFRAME):
-        print('Processing frame ', iFRAME, '               ')
+    def runOnce(frame_index):
+        print('Processing frame ', frame_index, '               ')
         sys.stdout.write('\x1b[1A')
 
         # make labels from the masks
-        label1, nlabels1, FL1ALL = getLabeledMask(iFRAME)
-        label2, nlabels2, FL2ALL = getLabeledMask(iFRAME + frame_skip)
-
+        label1, nlabels1, FL1ALL = get_labeled_mask(frame_index)
+        label2, nlabels2, FL2ALL = get_labeled_mask(frame_index + frame_skip)
         # get statistics
-        comXY1, AREA1, celllabels1, FLMEASURE1 = getObjectStats(label1, nlabels1, FL1ALL, 1, iFRAME)
-        comXY2, AREA2, FLMEASURE2 = getObjectStats(label2, nlabels2, FL2ALL, 2, iFRAME + frame_skip)
-
+        comXY1, AREA1, celllabels1, FLMEASURE1 = getObjectStats(
+            label1,
+            nlabels1,
+            FL1ALL,
+            1,
+            frame_index,
+            'MeasureOne'
+        )
+        comXY2, AREA2, FLMEASURE2 = getObjectStats(
+            label2,
+            nlabels2,
+            FL2ALL,
+            2,
+            frame_index + frame_skip,
+            'MeasureTwo'
+        )
         # process center of mass (CoM) arrays
         comXY1 = np.array(list(zip(*comXY1)))
         comXY2 = np.array(list(zip(*comXY2)))
+        print(3.1)
         comXY1 = np.nan_to_num(comXY1)
         comXY2 = np.nan_to_num(comXY2)
-
         # make the distance map
         DISTMAT = []
         ARGALL = []
+        print(3.2)
         for i2 in range(nlabels2):
             ARGALL.append((i2, label1, label2, nlabels1, nlabels2, comXY1, comXY2))
-        DISTMAT = list(map(getMetricOverlap, ARGALL))
-        DISTMAT = np.array(DISTMAT)
+        print(3.3)
+        if len(ARGALL) < 1000:
+            DISTMAT = list(map(getMetricOverlap, ARGALL))
+            DISTMAT = np.array(DISTMAT)
+        else:
+            print('Probably faulty frame')
+            DISTMAT = np.array([0])
+        print(3.4)
         # print DISTMAT.shape
-
+        print(4)
         # return a compressed sparse array, since most entries are zeros
         DISTMAT = scipy.sparse.csr_matrix(DISTMAT)
 
         # print 'frame ', iFRAME, ' done'
 
         # pdb.set_trace()
-
-        return (iFRAME, label1, nlabels1, (comXY1, celllabels1, AREA1), DISTMAT, FLMEASURE1)
+        print(5)
+        return (frame_index, label1, nlabels1, (comXY1, celllabels1, AREA1), DISTMAT, FLMEASURE1)
 
     ############################################################################
     ############################################################################
@@ -456,22 +478,11 @@ def lineage_pipeline(
         return img
 
     # get measurements in parallel
-    MEASUREMENTS = []
     ARGLIST = []
     for iFRAME in range(first_frame, frame_max, 1):
         ARGLIST.append(iFRAME)
 
-    # if pool != None:
-    #	pool = Pool(pool)
-    #	MEASUREMENTS = pool.map(runOnce, ARGLIST)
-    #	pool.close
-    # else:
     MEASUREMENTS = list(map(runOnce, ARGLIST))
-
-    TRACKING_RESULTS = MEASUREMENTS
-
-    # pdb.set_trace()
-
     # ~ ############################################################################
     ############################################################################
     # save results - for use when running piecemeal
@@ -662,8 +673,30 @@ def lineage_pipeline(
                 # print iselect2
 
                 dist2 = np.squeeze(dist[cellID, :].toarray())
+                # if type(dist2) == float:
+                #     dist2 = np.ndarray([1])
+                #     print('I happened')
+                # if dist2.ndim == 0:
+                #     dist2 = np.array([[1, 2, 3], [4, 5, 6]], np.int32)
+                #     print('What is up')
+                # print(f'{dist2=}')
+                # print(f'{iselect2=}')
                 dist2 = dist2[iselect2]
-
+                # try:
+                #     if dist2 is None:
+                #         dist2 = np.ndarray([1])
+                #         print('I am happening')
+                # except ValueError:
+                #     dist2 = np.array([[1, 2, 3], [4, 5, 6]], np.int32)
+                # try:
+                #     if not dist2:
+                #         dist2 = np.ndarray([1])
+                #         print('I am happening as well')
+                # except ValueError:
+                #     dist2 = np.array([[1, 2, 3], [4, 5, 6]], np.int32)
+                # print(dist2)
+                # if not iselect2:
+                #     iselect2 = [0]
                 cellID2 = iselect2[np.argmax(dist2)]
                 distmax = np.amax(dist2)
 
@@ -950,8 +983,8 @@ def lineage_pipeline(
     f.write('std. area,')
     if FLN > 0:
         for fllab in fluorescent_labels:
-            f.write('mean ' + fllab + ',')
-            f.write('std. ' + fllab + ',')
+            f.write('mean ' + f'{fllab}' + ',')
+            f.write('std. ' + f'{fllab}' + ',')
     f.write('doubling time')
     f.write('\n')
 

@@ -19,14 +19,20 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 import glob
 import os
 import time
+import warnings
 
 import click
 import cv2
 import nd2reader
+import numpy as np
 import tqdm
 from pims import ND2_Reader
-from tiffile import imsave as tiff_save
+from skimage import filters
 from skimage.io import imsave as png_save
+from tiffile import imsave as tiff_save
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 @click.command()
 @click.option(
@@ -84,7 +90,7 @@ def converter(input_filepath: str, output_filepath: str, visualize: bool):
                     for fov in range(fov_count):
                         for channel in range(channels):
                             file_name_list.append([frame, fov, channel])
-                for index, input_frame in tqdm.tqdm(enumerate(input_frames)):
+                for index, input_frame in enumerate(tqdm.tqdm(input_frames)):
                     output_filename = file_name_list[index]
                     frame, fov, channel = output_filename
                     frame_number = f'{frame}'.zfill(6)
@@ -94,15 +100,20 @@ def converter(input_filepath: str, output_filepath: str, visualize: bool):
                         time.sleep(.1)
                     # This means we have to output TIFFs
                     if channel > 0:
+                        try:
+                            val = filters.threshold_otsu(input_frame)
+                            thresholded_array = input_frame < val
+                            thresholded_array = np.logical_not(thresholded_array)
+                        except ValueError:
+                            thresholded_array = input_frame
                         png_save(
                             f'{output_filepath}/masks/{file_name}.png',
-                            input_frame,
+                            thresholded_array,
                         )
-                    else:
-                        tiff_save(
-                            f'{output_filepath}/tiffs/{file_name}.tiff',
-                            input_frame,
-                        )
+                    tiff_save(
+                        f'{output_filepath}/tiffs/{file_name}.tiff',
+                        input_frame,
+                    )
                 if visualize:
                     cv2.destroyAllWindows()
 
