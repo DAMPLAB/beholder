@@ -1,18 +1,10 @@
-
-import string
-import sys
 import os
-import time
-from multiprocessing import Pool
 import numpy as np
-import pdb
 
 #import custom python scripts
-import Image_alignment
-import Image_analysis_stack
-import RunWeka
-import TrackCellLineages
-import Lineage_analysis
+from cell_tracking import Image_alignment, Image_analysis_stack, Lineage_analysis, RunWeka, TrackCellLineages
+
+
 #######################################################################
 ######################################################################
 
@@ -353,7 +345,7 @@ if not b_Segment and (b_track or b_ANALYZE or b_RENDER):
 if b_ALIGN:
 	AlignARG = []
 	AlignARG.append([AlignROI, AlignDir, ImageDir, fname, iXY,FLChannels])
-	list(map(Image_alignment.run,AlignARG))
+	list(map(Image_alignment.run, AlignARG))
 
 
 if b_Segment:
@@ -484,7 +476,7 @@ if b_track:
 		TrackARG.append([AlignDir, fname, Mask2Dir, LineageDir, FIRSTFRAME, FRAMEMAX, AREAMIN, AREAMAX,FLLABELS, Ftime, FLSKIP, FLINITIAL,MINTRAJLENGTH,ixy,FLChannels,None])
 	
 
-	list(map(TrackCellLineages.run,TrackARG))
+	list(map(TrackCellLineages.run, TrackARG))
 
 	
 	
@@ -497,7 +489,7 @@ if LANALYZE:
 	XYlin = []
 	for xy in iXY:
 		XYlin.append([xy,LINOUTDIR,LINRUNALL,FLLABELS])
-	list(map(Lineage_analysis.run,XYlin))
+	list(map(Lineage_analysis.run, XYlin))
 	
 if b_ANALYZE or b_RENDER:
 	if Writelineagetext:

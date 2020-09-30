@@ -144,4 +144,9 @@ cython_debug/
 databases/%
 
 # Bunch of images that we don't want.
-Test/
+example_files/
+test/
+
+# Generates some serialized datastructures we don't want to commit
+*.pkl
+*.csv

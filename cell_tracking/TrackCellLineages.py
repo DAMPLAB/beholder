@@ -1,13 +1,18 @@
-# the purpose of this script is to use binary masks to label and track cells
-# some modifications are required for the script to work within a given directory and with a specific dataset
-############################################################################
-############################################################################
+'''
+--------------------------------------------------------------------------------
+Description: The purpose of this script is to use binary masks to label and
+track cells.
+
+Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
+--------------------------------------------------------------------------------
+'''
 
 import os
 import pickle as pickle
 import sys
 from io import StringIO
 
+import click
 import cv2 as cv
 import imageio
 import numpy as np
@@ -15,190 +20,228 @@ import scipy.ndimage as ndimage
 import scipy.sparse
 from scipy.signal import convolve
 
-############################################################################
 # globals
 # used to keep track of which frames have fluorescence images
 FLFILES = []
+FILTERWINDOW = 10
 
 
-############################################################################
-############################################################################
+# ----------------------------- Data Filters -----------------------------------
+def standard_deviation_filter(data):
+    '''
+    Filter to set minimum to zero and standard deviation to 1
+    Args:
+        data:
 
-# filter 1: filter to set minimum to zero and standard deviation to 1
-def filterData1(data):
+    Returns:
+
+    '''
     data = data - np.min(data)
     data = data / np.std(data)
     return data * 1.0
 
 
-# sets the filtering window size for filter2 (10 is a good standard number)
-FILTERWINDOW = 10
+def high_pass_window_filter(data):
+    '''
+    High pass filter, subtracts running average of 10 frames, normalizes
+    standard deviation to 1 in the future - make these easy to pass as
+    parameters
 
+    Args:
+        data:
 
-# filter 2: high pass filter, subtracts running average of 10 frames, normalizes standard deviation to 1
-# in the future - make these easy to pass as parameters
-def filterData2(data):
-    # pdb.set_trace()
-    WIND = FILTERWINDOW
-    data = data - convolve(data, np.ones((WIND)) / WIND, mode='same')
-    # data = data-np.min(data[50:100])
+    Returns:
 
-    data[0:WIND] = 0.0
-    data[-WIND:] = 0.0
+    '''
+    window = FILTERWINDOW
+    data = data - convolve(
+        data,
+        np.ones(window) / window,
+        mode='same',
+    )
 
-    # data = data / (np.std(data[50:300]))
+    data[0:window] = 0.0
+    data[-window:] = 0.0
+
     data = data / (np.std(data))
 
     return data
 
 
-# filter 3: filter to set the minimum to zero and maximum to 1
-def filterData3(data):
-    data = data - np.min(data)
-    data = data / np.max(data)
-    return data * 1.0
+def low_pass_window_filter(data):
+    '''
 
+    Args:
+        data:
 
-def backgroundData2(data):
-    # pdb.set_trace()
-    WIND = FILTERWINDOW
+    Returns:
 
-    dataBackground = convolve(data, np.ones((WIND)) / WIND, mode='same')
-
-    return dataBackground
+    '''
+    window = FILTERWINDOW
+    data_background = convolve(
+        data,
+        np.ones(window) / window,
+        mode='same',
+    )
+    return data_background
 
 
 # add grayscale to color image
-def addGrayToColor(IMG, img):
+def add_gray_to_color(IMG, img):
     for ii in range(3):
         IMG[:, :, ii] = IMG[:, :, ii] + img
     return IMG
 
 
-############################################################################
-############################################################################
+# ------------------------- Colorization Utilities -----------------------------
+def get_colors():
+    '''
 
-# open the color table to get colors for stuff
-# need to have colorfile in working directory
-def getColors():
-    colorfile = 'RGB-codes.csv'
-    ISFILE = os.path.isfile(colorfile)
-    if not ISFILE:
-        # colors = [(65025,0,0),(0,0,65025),(65025,65025,0),(0,65025,65025),(65025,0,65025)]
-        colors = [(255, 0, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]
+    Returns:
+
+    '''
+    color_file = 'RGB-codes.csv'
+    if not os.path.isfile(color_file):
+        output_colors = [
+            (255, 0, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+            (0, 255, 255),
+            (255, 0, 255),
+        ]
     else:
-        # print 'TRYING TO IMPORT ROI:', ROIFILE
-        COLORTXT = open(colorfile, 'rb').read()
-
+        color_text = open(color_file, 'rb').read()
         # trick for newline problems
-        COLORTXT = StringIO(COLORTXT.replace('\r', '\n\r'))
-        colors = []
-        COLORS = np.loadtxt(COLORTXT, delimiter=",", skiprows=1, dtype='str')
-        for row in COLORS:
+        color_text = StringIO(color_text.replace('\r', '\n\r'))
+        output_colors = []
+        input_colors = np.loadtxt(
+            color_text,
+            delimiter=",",
+            skiprows=1,
+            dtype='str',
+        )
+        for row in input_colors:
             color = (int(row[1]), int(row[2]), int(row[3]))
-            colors.append(color)
+            output_colors.append(color)
 
-    return colors[2:]
+    return output_colors[2:]
 
 
-############################################################################
-############################################################################
-# parameters to adjust based on directory and dataset
-def main(argv):
+# --------------------------- Main Image Pipeline ------------------------------
+@click.command()
+@click.option(
+    '--root_directory',
+    prompt='Root directory for input images',
+    help='TODO',
+    default='../test/tiffs',
+)
+@click.option(
+    '--file_prefix',
+    prompt='Prefix for input files',
+    help='TODO',
+    default='t',
+)
+# TODO: Add on the fly mask generation.
+@click.option(
+    '--mask_directory',
+    prompt='Prefix for input files',
+    help='TODO',
+    default='../test/masks',
+)
+def lineage_pipeline(
+        root_directory: str,
+        file_prefix: str,
+        mask_directory: str,
+):
     # the path to the directory containing original/aligned images relative working directory
-    rootdir = argv[0] + '/'
-
-    fname = argv[1]
-    MaskDir = argv[2] + '/'
-
     # the following are added to the rootdir to get specific files
     # the filenames should be numbered (in this case with three decimals; %03d)
     # mask image
-    filefmt = MaskDir + fname + '%06dxy%dc%d.png'
-    # phase image
-    filefmt2 = fname + '%06dxy%dc%d.tif'
+    # TODO: When we're doing the ND2 split out we need to meet this format.
+    file_format = mask_directory + '/' + file_prefix + '%06dxy%dc%d.png'
 
     # useful parameters for if you want to visualize cell and compare to output
     # set to true to create labeled images with numbers (trajectories)
-    writeNumbers = True
+    write_numbers = True
     # set to true to create labeled images with cell regions false colored
-    writeLabels = True
+    write_labels = True
     # image to write labels on (currently set to mask images)
-    labelimage = filefmt
+    label_image = file_format
     # name to save labeled stuff
-    labelname = argv[3] + '/' + fname + '-%03d.png'
+    label_name = mask_directory + '/' + file_prefix + '-%03d.png'
 
     # xy label
-    iXY = argv[13]
-
-    # number of threads for pool
-    if argv[15] != None:
-        pool = argv[15]
-    else:
-        pool = None
+    # TODO: I don't know why.
+    i_xy = 5
 
     # output name for cell statistics csv
-    cellstatCSV = 'iXY' + str(iXY) + '_cell_statistics.csv'
+    cell_statistics_csv = 'iXY' + str(i_xy) + '_cell_statistics.csv'
     # output name for lineages csv
-    lineageCSV = 'iXY' + str(iXY) + '_lineagedata.csv'
+    lineage_csv = 'iXY' + str(i_xy) + '_lineagedata.csv'
 
     # fluorescence channels (used in filenames)
     # used to get string in filename below.
-    iCF = argv[14]
+    # TODO: Use our stuff to pull out the channel names.
+    fluorescent_channels = ['YFP', 'CFP', 'mCherry']
 
     # fluorescence image
-    filefmtfl = fname + '%06dxy%dc%d.tif'
+    fluorescent_file_format = file_prefix + '%06dxy%dc%d.tif'
 
     # the number for the first frame in the dataset
-    FIRSTFRAME = argv[4]
+    # Jx - TODO: We need to use the glob of the images to get this via sort.
+    first_frame = 0
     # used to test every nth image for overlap.
-    FRAMESKIP = 1
+    frame_skip = 1
     # the number of the last frame in the dataset
-    FRAMEMAX = argv[5]
+    # Jx - TODO: Same as above, just get the length of the files via the glob.
+    frame_max = 29
 
     # limits on the area of cells to consider
-    AREAMIN = argv[6]
-    AREAMAX = argv[7]
+    # Jx - TODO: You probably need to pull out ImageJ to get the rough
+    #  approximation of the dimensions of the cells coming off the scope.
+    # Jx - TODO: These are kind of guesses based on ImageJ
+    area_min = 2000
+    area_max = 4000
 
     # radius of how far center of masses can be and still check distances
-    THRESHOLD = AREAMIN * 1.5
+    threshold = area_min * 1.5
 
     # used in csv output
-    FLLABELS = argv[8]
+    fluorescent_labels = fluorescent_channels
 
     # time in between analyzed frames (different from frames)
-    dt = argv[9]  # min
+    # Jx - TODO: Use the metadata coming off of the nd2 to figure out the
+    #  timescale
+    time_delta = 0.5
 
     # period of fluorescence frames (every nth frame)
-    dPeriodFL = argv[10]  # frames
-    FLSKIP = dPeriodFL
+    # Jx - TODO: This is basically where the fluorescent frames start. I think
+    # that means that they're chunked like:
+    # Frame | Grayscale -> Fl_Channel_1 -> Fl_Channel_2 -> Fl_Channel_3 | into
+    # next frame.
+    fluorescent_frame_stride = 6
+    fluorescent_skip = fluorescent_frame_stride
     # the first frame that has a fluorescence image
-    FLINITIAL = argv[11]
+    fluorescent_initial_image = 55
 
     # minimum trajectory length (in actual segmented frames)
-    MINTRAJLENGTH = argv[12]  # frames
+    min_trajectory_length = 10  # frames
 
-    # end of parameters to adjust
-    ############################################################################
-    ############################################################################
-
-    ############################################################################
-    ############################################################################
     def getLabeledMask(iFRAME):
 
         global FLFILES
 
         # get segmentation data
-        filename = rootdir + filefmt % (iFRAME, iXY, 1)
+        filename = file_format % (iFRAME, i_xy, 1)
         img = imageio.imread(filename)
         # print 'loaded label file', iFRAME, ' with dimensions', img.shape
         img = 255 - img
 
         # get fluorescence data
         imgFLALL = []
-        for icf in iCF:
-            if ((iFRAME - FLINITIAL) % FLSKIP == 0) and (iFRAME >= FLINITIAL):
-                filename = rootdir + filefmtfl % (iFRAME, iXY, icf)
+        for icf in fluorescent_channels:
+            if ((iFRAME - fluorescent_initial_image) % fluorescent_skip == 0) and (iFRAME >= fluorescent_initial_image):
+                filename = root_directory + fluorescent_file_format % (iFRAME, i_xy, icf)
                 # print filename
                 imgFL = imageio.imread(filename)
                 FLFILES.append(iFRAME)
@@ -225,7 +268,7 @@ def main(argv):
         # measure mean fluorescence
         FLMEASURE = []
 
-        if FLINITIAL != 0:
+        if fluorescent_initial_image != 0:
             if iFRAME in FLFILES:
                 for img in FLALL:
                     flint = ndimage.sum(img, label, list(range(nlabels)))
@@ -256,10 +299,10 @@ def main(argv):
 
         # get a subregion of the label image, then compare
         SZ = label1.shape
-        Xlow = max([0, int(comXY2[0, i2] - THRESHOLD)])
-        Ylow = max([0, int(comXY2[1, i2] - THRESHOLD)])
-        Xhigh = min([SZ[0], int(comXY2[0, i2] + THRESHOLD)])
-        Yhigh = min([SZ[1], int(comXY2[1, i2] + THRESHOLD)])
+        Xlow = max([0, int(comXY2[0, i2] - threshold)])
+        Ylow = max([0, int(comXY2[1, i2] - threshold)])
+        Xhigh = min([SZ[0], int(comXY2[0, i2] + threshold)])
+        Yhigh = min([SZ[1], int(comXY2[1, i2] + threshold)])
 
         # i2c = label2[int(comXY2[0,i2]),int(comXY2[1,i2])]
         # if (i2c == i2):
@@ -290,11 +333,11 @@ def main(argv):
 
         # make labels from the masks
         label1, nlabels1, FL1ALL = getLabeledMask(iFRAME)
-        label2, nlabels2, FL2ALL = getLabeledMask(iFRAME + FRAMESKIP)
+        label2, nlabels2, FL2ALL = getLabeledMask(iFRAME + frame_skip)
 
         # get statistics
         comXY1, AREA1, celllabels1, FLMEASURE1 = getObjectStats(label1, nlabels1, FL1ALL, 1, iFRAME)
-        comXY2, AREA2, FLMEASURE2 = getObjectStats(label2, nlabels2, FL2ALL, 2, iFRAME + FRAMESKIP)
+        comXY2, AREA2, FLMEASURE2 = getObjectStats(label2, nlabels2, FL2ALL, 2, iFRAME + frame_skip)
 
         # process center of mass (CoM) arrays
         comXY1 = np.array(list(zip(*comXY1)))
@@ -396,7 +439,7 @@ def main(argv):
                     newtrajnum = '%04d' % cellvisit
                     NEWTRAJ[loc] = newtrajnum
 
-            if writeLabels:
+            if write_labels:
                 writeLabel(newtrajnum, XY, label, iFRAME)
 
             # for writing label text in images
@@ -415,7 +458,7 @@ def main(argv):
     # get measurements in parallel
     MEASUREMENTS = []
     ARGLIST = []
-    for iFRAME in range(FIRSTFRAME, FRAMEMAX, 1):
+    for iFRAME in range(first_frame, frame_max, 1):
         ARGLIST.append(iFRAME)
 
     # if pool != None:
@@ -459,7 +502,7 @@ def main(argv):
     # ~ ############################################################################
     # ~ ############################################################################
     # get total cell data
-    if FLINITIAL != 0:
+    if fluorescent_initial_image != 0:
         # total number of frames
         iTN = FLN
 
@@ -483,16 +526,17 @@ def main(argv):
             flmedian = []
 
             # for iT in range(0,iTN,dPeriodFL):
-            for iT in range((FLINITIAL - FIRSTFRAME), (FRAMEMAX - FIRSTFRAME), dPeriodFL):
+            for iT in range((fluorescent_initial_image - first_frame), (frame_max - first_frame),
+                            fluorescent_frame_stride):
                 # print iT, ifl
-                flframe = iT + FIRSTFRAME
+                flframe = iT + first_frame
                 # pdb.set_trace()
                 fl = FLMEASURE[iT][ifl, :]
                 area = np.array(AREA[iT])
-                iselect = np.where((area >= AREAMIN) * (area <= AREAMAX))[0]
+                iselect = np.where((area >= area_min) * (area <= area_max))[0]
 
                 fln.append(len(iselect))
-                fltime.append(dt * flframe)
+                fltime.append(time_delta * flframe)
                 flmean.append(np.mean(fl[iselect]))
                 flmedian.append(np.median(fl[iselect]))
                 flstd.append(np.std(fl[iselect]))
@@ -502,23 +546,23 @@ def main(argv):
             FLMEANALL.append(flmean)
             FLMEDIANALL.append(flmedian)
             FLSTDALL.append(flstd)
-            FLMEANALLFILTERED.append(filterData1(flmean))
-            FLMEANALLBACKGROUND.append(backgroundData2(flmean))
+            FLMEANALLFILTERED.append(standard_deviation_filter(flmean))
+            FLMEANALLBACKGROUND.append(low_pass_window_filter(flmean))
 
-        with open('iXY' + str(iXY) + '_global-cell-statistics.pkl', 'wb') as f:
+        with open('iXY' + str(i_xy) + '_global-cell-statistics.pkl', 'wb') as f:
             pickle.dump((fltime, fln, FLMEANALL, FLMEDIANALL, FLSTDALL, FLMEANALLFILTERED, FLMEANALLBACKGROUND), f,
                         protocol=pickle.HIGHEST_PROTOCOL)
 
         # save data to CSV
         # need to loop through number of channels
 
-        f = open(cellstatCSV, 'w')
+        f = open(cell_statistics_csv, 'w')
         f.write('time,')
         f.write('cell count,')
         for lmn in range(len(FLMEANALL)):
-            f.write('%s mean,' % FLLABELS[lmn])
-            f.write('%s std.,' % FLLABELS[lmn])
-            f.write('%s median,' % FLLABELS[lmn])
+            f.write('%s mean,' % fluorescent_labels[lmn])
+            f.write('%s std.,' % fluorescent_labels[lmn])
+            f.write('%s median,' % fluorescent_labels[lmn])
         f.write('\n')
 
         for ijk in range(len(fltime)):
@@ -537,7 +581,7 @@ def main(argv):
     # begin tracking proper
 
     # find many trajectories by starting at a multitude of frames
-    FRAMEMAXLIST = list(range(FRAMEMAX, (FIRSTFRAME + MINTRAJLENGTH), -1))
+    FRAMEMAXLIST = list(range(frame_max, (first_frame + min_trajectory_length), -1))
     # FRAMEMAXLIST = [FRAMEMAX,FRAMEMAX-30,FRAMEMAX-30*2,FRAMEMAX-30*3,FRAMEMAX-30*4]
 
     # current number of trajectories
@@ -548,17 +592,17 @@ def main(argv):
 
     # keep track of which indices are visited
     VISITED = []
-    for ijk in range(FRAMEMAX + 1):
+    for ijk in range(frame_max + 1):
         VISITED.append([])
 
     print('Tracking cells')
     # scan through the final frame
-    for FRAMEMAX in FRAMEMAXLIST:
-        print('framemax ', FRAMEMAX, '              ')
+    for frame_max in FRAMEMAXLIST:
+        print('framemax ', frame_max, '              ')
         # sys.stdout.write('\x1b[1A')
 
         # scan all cell ID's at the final frame
-        cellIDStart = list(range(nlabels[FRAMEMAX - FIRSTFRAME - 1]))
+        cellIDStart = list(range(nlabels[frame_max - first_frame - 1]))
 
         # current cell ID
         cellID = 0
@@ -591,7 +635,7 @@ def main(argv):
 
             loop = 0
 
-            for iT in range(FRAMEMAX - FIRSTFRAME - 1, 0, -1):
+            for iT in range(frame_max - first_frame - 1, 0, -1):
 
                 # mark cell as visited if not visited, otherwise end trajectory
                 if (cellID in VISITED[iT]):
@@ -607,14 +651,14 @@ def main(argv):
 
                 # area
                 area1 = AREA[iT][cellID]
-                if (not ((area1 >= AREAMIN) and (area1 <= AREAMAX))):
+                if (not ((area1 >= area_min) and (area1 <= area_max))):
                     # print 'bad area ', area1, ' cell ', cellID
                     bBad = True
 
                 # area of potential matches
                 area2 = np.array(AREA[iT - 1])
 
-                iselect2 = np.where((area2 >= AREAMIN) * (area2 <= AREAMAX))[0]
+                iselect2 = np.where((area2 >= area_min) * (area2 <= area_max))[0]
                 # print iselect2
 
                 dist2 = np.squeeze(dist[cellID, :].toarray())
@@ -627,7 +671,7 @@ def main(argv):
 
                 # print 'iT =', iT, 'cellID = ', cellID
                 # iFRAME if off from iT by 1 so add 1 to get frame
-                frame.append(iT + FIRSTFRAME)
+                frame.append(iT + first_frame)
 
                 CELLX = comXY[iT][0][cellID]
                 CELLY = comXY[iT][1][cellID]
@@ -641,16 +685,17 @@ def main(argv):
                 celllabel = np.column_stack(celllabel)
                 celllabels.append(celllabel)
 
-                time.append(dt * (iT + FIRSTFRAME))
+                time.append(time_delta * (iT + first_frame))
                 area.append(area1)
                 if FLN != 0:
-                    if (((iT + FIRSTFRAME - FLINITIAL) % dPeriodFL == 0) and ((iT + FIRSTFRAME) >= FLINITIAL)):
+                    if (((iT + first_frame - fluorescent_initial_image) % fluorescent_frame_stride == 0) and (
+                            (iT + first_frame) >= fluorescent_initial_image)):
                         try:
                             if FLN > 0:
                                 fl0.append(FLMEASURE[iT][:, cellID])
 
                         except:
-                            print('no fl data for ' + str(iT + FIRSTFRAME) + '              ')
+                            print('no fl data for ' + str(iT + first_frame) + '              ')
                     else:
                         if FLN > 0:
                             emptyfl = np.empty((FLN,))
@@ -696,7 +741,7 @@ def main(argv):
             # print 'fmeasures ', fltime, np.mean(flarea), np.max(fl0)
 
             # if ((len(fltime)>MINTRAJLENGTH) and (np.mean(flarea)<500) and (np.max(fl0)<4000)):
-            if ((len(frame) > MINTRAJLENGTH)):
+            if ((len(frame) > min_trajectory_length)):
                 if FLN > 0:
                     TRAJ.append((frame, time, area, cellXY, celllabels, fl0))
                 else:
@@ -716,7 +761,7 @@ def main(argv):
 
     with open('raw_traj.pkl', 'rb') as f:
         TRAJ = pickle.load(f)
-    FLN = len(FLLABELS)
+    FLN = len(fluorescent_labels)
 
     ########################################################################
     ########################################################################
@@ -740,7 +785,7 @@ def main(argv):
     # keep track of cell divisions
     DIVIDE = {}
 
-    colors = getColors()
+    colors = get_colors()
     trajnum = -1
 
     # actually go through all the trajectories
@@ -769,11 +814,11 @@ def main(argv):
                 # reads all the frame images into images dictionary
                 if iFRAME not in LVISITED:
                     LVISITED.append(iFRAME)
-                    filename = rootdir + labelimage % (iFRAME, iXY, 1)
+                    filename = root_directory + label_image % (iFRAME, i_xy, 1)
                     img = imageio.imread(filename)
                     imgshape = img.shape
                     bimg = np.zeros(imgshape + (3,))
-                    img = addGrayToColor(bimg, img)
+                    img = add_gray_to_color(bimg, img)
                     images[iFRAME] = img
                     LOC[iFRAME] = {}
                     LABELS[iFRAME] = {}
@@ -814,7 +859,7 @@ def main(argv):
                 j += 1
                 k += 1
             dframes = np.array(dframes)
-            dtime = (np.mean(dframes)) * dt
+            dtime = (np.mean(dframes)) * time_delta
             if dtime == 0:
                 dtime = 'nan'
         except:
@@ -828,15 +873,15 @@ def main(argv):
         print('Processed ', len(NEWTRAJLIST), ' lineages')
         sys.stdout.write('\x1b[1A')
 
-    if writeLabels:
-        if writeNumbers:
+    if write_labels:
+        if write_numbers:
             # pdb.set_trace()
             # write text to images and save
             for key in images:
                 image = writeText(key)
                 print('Saving ... ', key, '             ')
                 sys.stdout.write('\x1b[1A')
-                savename = rootdir + labelname % (key)
+                savename = root_directory + label_name % (key)
                 cv.imwrite(savename, image)
 
         else:
@@ -844,7 +889,7 @@ def main(argv):
                 image = images[key]
                 print('Saving ... ', key, '             ')
                 sys.stdout.write('\x1b[1A')
-                savename = rootdir + labelname % (key)
+                savename = root_directory + label_name % (key)
                 cv.imwrite(savename, image)
 
     ########################################################################
@@ -897,14 +942,14 @@ def main(argv):
         STDFL = np.array(stdFL)
     DTIMES = np.array(dtimes)
 
-    f = open(lineageCSV, 'w')
+    f = open(lineage_csv, 'w')
     f.write('traj name,')
     f.write('final time,')
     f.write('initial time,')
     f.write('mean area,')
     f.write('std. area,')
     if FLN > 0:
-        for fllab in FLLABELS:
+        for fllab in fluorescent_labels:
             f.write('mean ' + fllab + ',')
             f.write('std. ' + fllab + ',')
     f.write('doubling time')
@@ -927,78 +972,19 @@ def main(argv):
 
     # save picklefile with NEWTRAJLIST
     # traj = frame,time,area, cellXY, celllabels,fl0
-    with open('iXY' + str(iXY) + '_lineagetracking.pkl', 'wb') as f:
+    with open('iXY' + str(i_xy) + '_lineagetracking.pkl', 'wb') as f:
         pickle.dump(NEWTRAJLIST, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     if FLN != 0:
-        with open('iXY' + str(iXY) + '_lineagetrackingsummary.pkl', 'wb') as f:
+        with open('iXY' + str(i_xy) + '_lineagetrackingsummary.pkl', 'wb') as f:
             pickle.dump((NAMES, ITIMES, ETIMES, MEANAREA, STDAREA, MEANFL, STDFL), f, protocol=pickle.HIGHEST_PROTOCOL)
 
     # saves TOWRITE in pkl file to use in Image_Analysis.ipynb
-    with open('iXY' + str(iXY) + '_lineagetext.pkl', 'wb') as f:
+    with open('iXY' + str(i_xy) + '_lineagetext.pkl', 'wb') as f:
         pickle.dump(TOWRITE, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('\nCell tracking complete')
 
 
-####################################################################
-####################################################################
-
-# way to run as a module
-def run(argv):
-    main(argv)
-
-
-####################################################################
-####################################################################
-
-
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        main(sys.argv[1:])
-    else:
-        # Directory containing the images
-        ImageDir = 'Test'
-        AlignDir = ImageDir
-        # get working directory
-        WorkDir = os.getcwd()
-        # Image filename preceding channel indication (e.g. 20171212_book)
-        fname = 't'
-
-        # mask directory (relative to image directory)
-        Mask2Dir = 'Mask2'
-
-        # first frame of images
-        FIRSTFRAME = 50
-        # last frame of images
-        FRAMEMAX = 100
-        # first frame with fluorescence image
-        FLINITIAL = 55
-        # frequency of fluorescence images (i.e. every nth frame)
-        FLSKIP = 6
-        # time between frames in minutes
-        Ftime = 0.5  # min
-        # list of fluorescence channels
-        FLChannels = [2, 3, 4]
-
-        # labels for fluorescence channels (must be strings)
-        FLLABELS = ['YFP', 'CFP', 'mCherry']
-
-        # name of directory to save lineages into relative to image directory
-        LineageDir = 'Lineages'
-        if not os.path.isfile(AlignDir + '/' + LineageDir):
-            os.system('mkdir ' + AlignDir + '/' + LineageDir)
-        # minimum area of cell in pixels
-        AREAMIN = 100
-        # maximum area of cell in pixels
-        AREAMAX = 2500
-        # minimum length of trajectories in # of frames
-        MINTRAJLENGTH = 10
-
-        CORES = 1
-
-        iXY = 5
-
-        TrackARG = [AlignDir, fname, Mask2Dir, LineageDir, FIRSTFRAME, FRAMEMAX, AREAMIN, AREAMAX, FLLABELS, Ftime,
-                    FLSKIP, FLINITIAL, MINTRAJLENGTH, iXY, FLChannels, CORES]
-        main(TrackARG)
+    lineage_pipeline()

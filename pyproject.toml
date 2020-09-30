@@ -12,6 +12,12 @@ imageio = "^2.9.0"
 opencv-python = "^4.4.0"
 ipython = "^7.18.1"
 matplotlib = "^3.3.2"
+nd2reader = "^3.2.3"
+click = "^7.1.2"
+scikit-image = "^0.17.2"
+tqdm = "^4.50.0"
+pims_nd2 = "^1.1"
+tiffile = "^2018.10.18"
 
 [tool.poetry.dev-dependencies]
 
