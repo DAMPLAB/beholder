@@ -80,58 +80,72 @@ def make_gif(input_file: str, output_file: str):
         # We then append the resultant image to a list
         # Once we've iterated over the sum of the entire image, we
         # collapse it into a gif.
-        master_list = []
-        for frame_index in range(0, 288, 9):
-            # if frame.sum() < 800000000:
-            #     continue
-            # else:
-            grey_frame = colorize_frame(
-                input_frames[frame_index],
-                False,
-            )
-            cherry_frame = colorize_frame(
-                input_frames[frame_index + 1],
-                'green',
-            )
-            yfp_frame = colorize_frame(
-                input_frames[frame_index + 2],
-                'red',
-            )
-            intermediate_frame = cv2.addWeighted(
-                grey_frame,
-                1,
-                cherry_frame,
-                0.76,
-                0,
-            )
-            out_frame = cv2.addWeighted(
-                intermediate_frame,
-                1,
-                yfp_frame,
-                0.75,
-                0,
-            )
-            position = ((int)(out_frame.shape[1] / 2 - 268 / 2),
-                        (int)(out_frame.shape[0] / 2 - 36 / 2))
-
-            cv2.putText(
-                out_frame,  # numpy array on which text is written
-                f'{frame_index}',  # text
-                position,  # position at which writing has to start
-                cv2.FONT_HERSHEY_DUPLEX,  # font family
-                1,  # font size
-                (209, 80, 0, 255),  # font color
-                3)  # font stroke
-            master_list.append(out_frame)
-            # cv2.imshow('image', out_frame)
-            # cv2.waitKey(0)
-            # cv2.imshow('image', cherry_frame)
-            # cv2.waitKey(0)
-            # cv2.imshow('image', yfp_frame)
-            # cv2.waitKey(0)
-            # cv2.destroyAllWindows()
-        imageio.mimsave('cells.gif', master_list)
-
+        # Start: 0
+        # Stop: 288
+        # Start two: 360 ish
+        # Stop 2: 729 ish
+        # Start: 1089
+        # Stop: 1452
+        # Start: 1815
+        # Stop: 2172
+        # Start: 2537
+        # Stop: 2901
+        # Start: 3261
+        # Start:  3627
+        observation_start_stop = [
+            [0, 288, 9, 'test_1'],
+            [288, 360, 9, 'test_2'],
+            [360, 729, 9, 'test_3'],
+            [729, 1089, 9, 'test_4'],
+            [1089, 1452, 9, 'test_5'],
+            [1452, 1815, 9, 'test_6'],
+            [2172, 2537, 9, 'test_7'],
+            [2901, 3261, 9, 'test_8'],
+            [3261, 3627, 9, 'test_9'],
+        ]
+        for start, stop, stride, label in observation_start_stop:
+            interior_list = []
+            for frame_index in range(start, stop, stride):
+                grey_frame = colorize_frame(
+                    input_frames[frame_index],
+                    False,
+                )
+                cherry_frame = colorize_frame(
+                    input_frames[frame_index + 1],
+                    'green',
+                )
+                yfp_frame = colorize_frame(
+                    input_frames[frame_index + 2],
+                    'red',
+                )
+                intermediate_frame = cv2.addWeighted(
+                    grey_frame,
+                    1,
+                    cherry_frame,
+                    0.76,
+                    0,
+                )
+                out_frame = cv2.addWeighted(
+                    intermediate_frame,
+                    1,
+                    yfp_frame,
+                    0.75,
+                    0,
+                )
+                position = (
+                    int(out_frame.shape[1] / 2 - 268 / 2),
+                    int(out_frame.shape[0] / 2 - 36 / 2)
+                )
+                cv2.putText(
+                    out_frame,  # numpy array on which text is written
+                    f'{frame_index % stride}',  # text
+                    position,  # position at which writing has to start
+                    cv2.FONT_HERSHEY_DUPLEX,  # font family
+                    1,  # font size
+                    (209, 80, 0, 255),  # font color
+                    3)  # font stroke
+                interior_list.append(out_frame)
+            imageio.mimsave(f'{label}.gif', interior_list)
 
 
 if __name__ == '__main__':
