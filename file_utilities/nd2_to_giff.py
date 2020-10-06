@@ -213,6 +213,11 @@ def make_gif(input_file: str):
                     grey_frame,
                     False,
                 )
+                grey_frame = modify_contrast(
+                    grey_frame,
+                    alpha=5,
+                    contrast=127,
+                )
                 cherry_frame = colorize_frame(
                     cherry_frame,
                     'green',
@@ -231,10 +236,6 @@ def make_gif(input_file: str):
                     alpha=5,
                     contrast=127,
                 )
-                yfp_frame = modify_contrast(colorize_frame(
-                    yfp_frame,
-                    'red',
-                ))
                 intermediate_frame = cv2.addWeighted(
                     grey_frame,
                     1,
