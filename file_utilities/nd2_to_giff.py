@@ -162,7 +162,7 @@ def write_summary_statistics(
             (100, y_track),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
-            (255, 255, 255),
+            0,
             6,
             cv2.LINE_AA,
         )
