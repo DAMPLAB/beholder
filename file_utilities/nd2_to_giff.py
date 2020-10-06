@@ -92,6 +92,7 @@ def generate_summary_statistics(
 ):
     out_list = []
     minute_increment = frame_index // 10
+    # Time from Zero
     d1 = timing_information + datetime.timedelta(minutes=minute_increment*15)
     # Figure out how to make this more human readable. HH:MM?
     out_list.append(f'{d1}')
@@ -212,10 +213,24 @@ def make_gif(input_file: str):
                     grey_frame,
                     False,
                 )
-                cherry_frame = modify_contrast(colorize_frame(
+                cherry_frame = colorize_frame(
                     cherry_frame,
                     'green',
-                ))
+                )
+                cherry_frame = modify_contrast(
+                    cherry_frame,
+                    alpha=5,
+                    contrast=127,
+                )
+                yfp_frame = colorize_frame(
+                    yfp_frame,
+                    'red',
+                )
+                yfp_frame = modify_contrast(
+                    yfp_frame,
+                    alpha=5,
+                    contrast=127,
+                )
                 yfp_frame = modify_contrast(colorize_frame(
                     yfp_frame,
                     'red',
@@ -234,7 +249,6 @@ def make_gif(input_file: str):
                     0.75,
                     0,
                 )
-                # out_frame = dtype_conversion_frame(out_frame)
                 out_frame = write_summary_statistics(
                     out_frame,
                     stats_list,
