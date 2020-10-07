@@ -81,6 +81,25 @@ def modify_contrast(
     )
 
 
+def blank_check(input_frame: np.ndarray, threshold: int) -> bool:
+    print(np.sum(input_frame))
+    return False
+
+
+def adaptive_thresholding(input_frame: np.ndarray):
+    input_frame = input_frame.astype(np.uint8)
+    if len(input_frame) > 2:
+        input_frame = input_frame
+    return cv2.adaptiveThreshold(
+        input_frame,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        11,
+        2,
+    )
+
+
 # -------------------------------- Statistics ----------------------------------
 
 
@@ -93,7 +112,7 @@ def generate_summary_statistics(
     out_list = []
     minute_increment = frame_index // 10
     # Time from Zero
-    d1 = timing_information + datetime.timedelta(minutes=minute_increment*15)
+    d1 = timing_information + datetime.timedelta(minutes=minute_increment * 15)
     # Figure out how to make this more human readable. HH:MM?
     out_list.append(f'{d1}')
     # Segmentation Count goes here?
@@ -115,12 +134,15 @@ def histogram_visualization():
 def write_summary_statistics(
         input_frame: np.ndarray,
         input_stats: List[str],
-        position: str = 'mid',
+        position: str = 'br',
         font_name: str = 'Hack.ttf',
         font_size: int = 12,
 ):
     initial_position = [0, 0]
     array_shape_x, array_shape_y = input_frame.shape[0], input_frame.shape[1]
+    # The write frame is transparent and has an alpha channel, thus the extra
+    # dimension of the array.
+    write_frame = np.zeros((array_shape_x, array_shape_y, 4))
     downward_text = True if position in ('tl', 'tr') else False
     # Determine our maximum line length. Assuming that requested text is
     # centered.
@@ -146,28 +168,32 @@ def write_summary_statistics(
         initial_position[0] = (array_shape_x - offset_buffers[0]) - max_length
         initial_position[1] = array_shape_y + offset_buffers[1]
     if position == 'br':
-        initial_position[0] = (array_shape_x - offset_buffers[0]) - max_length
-        initial_position[1] = array_shape_y + string_heights + offset_buffers[1]
+        initial_position[0] = int((array_shape_x - offset_buffers[0]) - \
+                                  max_length) * 2
+        initial_position[1] = int(array_shape_y - string_heights + \
+                                  offset_buffers[1])
     if position == 'bl':
         initial_position[0] = initial_position[0] + offset_buffers[0]
         initial_position[1] = array_shape_y + string_heights + offset_buffers[1]
-    y_track = 100
-    out_frame = input_frame
+    input_frame = cv2.cvtColor(input_frame, cv2.COLOR_RGB2RGBA)
+    y_track = initial_position[1]
     for line in input_stats:
         line_width = font.getsize(line)[0]
-        _x_pos = (initial_position[0] - line_width) / 2
+        _x_pos = int((initial_position[0] - line_width) / 2)
         cv2.putText(
-            out_frame,
+            write_frame,
             line,
-            (100, y_track),
+            (_x_pos, y_track),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
-            0,
+            0xfffff,
             6,
             cv2.LINE_AA,
         )
-        y_track = y_track + 30
-    return out_frame
+        y_track = y_track - 30
+    cnd = write_frame[:, :, 3] > 0
+    input_frame[cnd] = write_frame[cnd]
+    return input_frame
 
 
 @click.command()
@@ -177,7 +203,6 @@ def write_summary_statistics(
     help='The path to the ND2 files to be converted.',
     default='/media/jackson/WD_BLACK/microscopy_images/to_gif/10_h.nd2',
 )
-
 def make_gif(input_file: str):
     with nd2reader.ND2Reader(input_file) as input_frames:
         frame_count = input_frames.sizes['t']
@@ -186,7 +211,7 @@ def make_gif(input_file: str):
         observation_start_stop = []
         number = frame_count * channels
         print(input_frames.get_timesteps())
-        for observation in range(number-1):
+        for observation in range(number - 1):
             observation_start_stop.append(
                 [
                     (observation * number),
@@ -209,6 +234,7 @@ def make_gif(input_file: str):
                     yfp_frame,
                     frame_index,
                 )
+                grey_frame = adaptive_thresholding(grey_frame)
                 grey_frame = colorize_frame(
                     grey_frame,
                     False,
@@ -218,6 +244,7 @@ def make_gif(input_file: str):
                     alpha=5,
                     contrast=127,
                 )
+                cherry_frame = adaptive_thresholding(cherry_frame)
                 cherry_frame = colorize_frame(
                     cherry_frame,
                     'green',
@@ -227,6 +254,7 @@ def make_gif(input_file: str):
                     alpha=5,
                     contrast=127,
                 )
+                yfp_frame = adaptive_thresholding(yfp_frame)
                 yfp_frame = colorize_frame(
                     yfp_frame,
                     'red',
@@ -236,6 +264,7 @@ def make_gif(input_file: str):
                     alpha=5,
                     contrast=127,
                 )
+
                 intermediate_frame = cv2.addWeighted(
                     grey_frame,
                     1,
@@ -243,6 +272,7 @@ def make_gif(input_file: str):
                     0.75,
                     0,
                 )
+                intermediate_frame = cv2.cvtColor(intermediate_frame, cv2.COLOR_GRAY2RGB)
                 out_frame = cv2.addWeighted(
                     intermediate_frame,
                     1,
@@ -250,6 +280,7 @@ def make_gif(input_file: str):
                     0.75,
                     0,
                 )
+                out_frame = adaptive_thresholding(out_frame)
                 out_frame = write_summary_statistics(
                     out_frame,
                     stats_list,
