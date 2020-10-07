@@ -9,8 +9,7 @@ How to Use:
     This assumes that you followed the installation instructions in the README
     to have a valid python environment locally in the repository.
 
-    `$ poetry run python nd2_to_tiff.py --input_filepath <MY_DIR_WITH_ND2>
-    --output_filepath <MY_OUTPUT_DIR> --visualize <IF_YOU_WANT_VISUALIZATION>`
+    `$ poetry run python nd2_to_tiff.py --input_filepath <MY_DIR_WITH_ND2>`
 
 
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
@@ -20,6 +19,7 @@ import datetime
 import warnings
 from typing import (
     List,
+    Union,
 )
 
 import click
@@ -38,65 +38,119 @@ warnings.filterwarnings("ignore")
 
 
 # ---------------------------- Utility Functions -------------------------------
-def dtype_conversion_frame(
-        input_image: np.ndarray,
-        datatype: str = 'uint8',
-):
-    if datatype == 'uint8':
-        return input_image.astype(np.uint8)
-
-
-def colorize_frame(input_image, color):
-    input_image = cv2.cvtColor(input_image, cv2.COLOR_GRAY2RGB)
-    if color == 'green':
-        input_image[:, :, (0, 2)] = 0
-    if color == 'red':
-        input_image[:, :, (1, 2)] = 0
-
-    return input_image
-
-
-# Modify the `contrast` value below to change the contrast of the input
-# pictures.
-def modify_contrast(
-        input_image, alpha: int = 5,
-        contrast: int = 127,
-):
+def colorize_frame(input_frame: np.ndarray, color: str) -> np.ndarray:
     '''
+    Converts a 1-Channel Grayscale Image to RGB Space and then converts the
+    prior image to a singular color.
 
     Args:
-        input_image:
-        alpha:
-        contrast:
+        input_frame: Input numpy array
+        color: (red|blue|green) What color to convert to:
 
     Returns:
+        Colorized ndarray
+
+    '''
+    input_frame = cv2.cvtColor(input_frame, cv2.COLOR_GRAY2RGB)
+    if color == 'green':
+        input_frame[:, :, (0, 2)] = 0
+    if color == 'red':
+        input_frame[:, :, (1, 2)] = 0
+    if color == 'blue':
+        input_frame[:, :, (0, 1)] = 0
+    return input_frame
+
+
+def downsample_image(input_frame: np.ndarray) -> np.ndarray:
+    '''
+    Downsamples a 16bit input image to an 8bit image. Will result in loss
+    of signal fidelity due to loss of precision.
+
+    Args:
+        input_frame: Input numpy array
+
+    Returns:
+        Downsampled ndarray
+    '''
+    return (input_frame / 256).astype('uint8')
+
+
+def modify_contrast(
+        input_frame: np.ndarray,
+        alpha: int = 5,
+        gamma: int = 127,
+):
+    '''
+    Modifies the contrast of the input image. This is done through modifying
+    the alpha and gamma. Alpha multiplies the underlying intensity while the
+    gamma is a straight increase to the intensity.
+
+    Args:
+        input_frame: Input numpy array
+        alpha: Alpha Value
+        gamma: Gamma Value
+
+    Returns:
+        Contrast Modified ndarray
 
     '''
     return cv2.addWeighted(
-        input_image,
+        input_frame,
         alpha,
-        input_image,
+        input_frame,
         0,
-        contrast,
+        gamma,
     )
 
 
-def blank_check(input_frame: np.ndarray, threshold: int) -> bool:
-    print(np.sum(input_frame))
+def empty_frame_check(input_frame: np.ndarray) -> bool:
+    '''
+    Checks to see if the inputted frame is empty.
+
+    An implementation detail from the underlying nd2reader library we're using:
+    Discontinuous or dropped frames are represented by NaN values instead of
+    zeroes which will later be implicitly cast to zeroes when being persisted
+    to disk. There does seem to be some places where there is a mismatch
+    between channels which results in the resultant image being off in terms
+    of stride.
+
+    Args:
+        input_frame: Input numpy array
+
+    Returns:
+        Whether or not the frame is 'emtpy'
+
+    '''
+    nan_converted_frame = np.nan_to_num(input_frame)
+    if np.sum(nan_converted_frame) == 0:
+        return True
     return False
 
 
-def adaptive_thresholding(input_frame: np.ndarray):
-    input_frame = input_frame.astype(np.uint8)
-    if len(input_frame) > 2:
-        input_frame = input_frame
-    return cv2.adaptiveThreshold(
+def apply_brightness_contrast(
+        input_frame: np.ndarray,
+        alpha=12.0,
+        beta=0,
+):
+    '''
+    Modifies the contrast of the input image. This is done through modifying
+    the alpha and gamma. Alpha multiplies the underlying intensity while the
+    gamma is a straight increase to the intensity. Basically, alpha is contrast
+    and beta is brightness
+
+    Args:
+        input_frame: Input numpy array
+        alpha: Alpha Value
+        beta: Beta Value
+
+    Returns:
+        Contrast Modified ndarray
+
+    '''
+    return cv2.convertScaleAbs(
         input_frame,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        11,
-        2,
+        alpha=alpha,
+        beta=beta,
     )
 
 
@@ -104,31 +158,40 @@ def adaptive_thresholding(input_frame: np.ndarray):
 
 
 def generate_summary_statistics(
-        timing_information: datetime.datetime,
-        cherry_frame: np.ndarray,
-        yfp_frame: np.ndarray,
+        c2_frame_and_name: List[Union[np.ndarray, str]],
+        c3_frame_and_name: List[Union[np.ndarray, str]],
         frame_index: int,
-):
-    out_list = []
-    minute_increment = frame_index // 10
-    # Time from Zero
-    d1 = timing_information + datetime.timedelta(minutes=minute_increment * 15)
-    # Figure out how to make this more human readable. HH:MM?
-    out_list.append(f'{d1}')
-    # Segmentation Count goes here?
-    out_list.append(f'Frame Index {frame_index}')
-    out_list.append(f'Green Mean Intensity: {int(np.mean(cherry_frame))}')
-    out_list.append(f'Red Mean Intensity: {int(np.mean(yfp_frame))}')
-    return out_list
-
-
-def histogram_visualization():
+) -> List[str]:
     '''
+    Generates summary statistics for the output frame.
+
+    Args:
+        c2_frame_and_name: Channel 2 Frame and it's channel label
+        c3_frame_and_name: Channel 3 Frame and it's channel label
+        frame_index: Index of the frame. We perform modulus division to get
+            the remainder outside the function as they should all be happening
+            at the same time scale.
 
     Returns:
-
+        List of summary statistics
     '''
-    pass
+    out_list = []
+    c2_frame, c2_name = c2_frame_and_name
+    c3_frame, c3_name = c3_frame_and_name
+    minute_increment = frame_index // 10
+    d1 = f'{datetime.timedelta(minutes=minute_increment * 15)}'
+    out_list.append(f'{d1}')
+    out_list.append(f'Frame Index {frame_index}')
+    out_list.append(f'{c2_name} Mean Intensity: {int(np.mean(c2_frame))}')
+    out_list.append(f'{c3_name} Mean Intensity: {int(np.mean(c3_frame))}')
+    out_list_max_len = 0
+    for line in out_list:
+        if len(line) > out_list_max_len:
+            out_list_max_len = len(line)
+    for index, line in enumerate(out_list):
+        padded_line = line.ljust(out_list_max_len, ' ')
+        out_list[index] = padded_line
+    return out_list
 
 
 def write_summary_statistics(
@@ -138,22 +201,32 @@ def write_summary_statistics(
         font_name: str = 'Hack.ttf',
         font_size: int = 12,
 ):
+    '''
+    Writes the summary statistics for the frame.
+
+    This is done via the generation of a new frame that has the text written
+    on top of it being collapsed into our 'final' image to avoid clipping
+    any of the data.
+
+    Args:
+        input_frame: Frame to be written on.
+        input_stats: Input statistics
+        position: Where to write the text at. (Kind of broken atm)
+        font_name: Font resource. Used for determining offsets.
+        font_size: Font size.
+
+    Returns:
+        Final image with statistics.
+    '''
     initial_position = [0, 0]
     array_shape_x, array_shape_y = input_frame.shape[0], input_frame.shape[1]
-    # The write frame is transparent and has an alpha channel, thus the extra
-    # dimension of the array.
-    write_frame = np.zeros((array_shape_x, array_shape_y, 4))
-    downward_text = True if position in ('tl', 'tr') else False
-    # Determine our maximum line length. Assuming that requested text is
-    # centered.
+    write_frame = np.zeros((array_shape_x, array_shape_y, 3), dtype=np.uint8)
     max_length = 0
     max_string = None
     for line in input_stats:
         if len(line) > max_length:
             max_length = len(line)
             max_string = line
-    # Convert our characters into pixels for the purposes of offsetting the
-    # origin.
     font = ImageFont.truetype(font_name, font_size)
     max_string_width, line_height = font.getsize(max_string)
     string_heights = max_string_width * len(input_stats)
@@ -171,11 +244,10 @@ def write_summary_statistics(
         initial_position[0] = int((array_shape_x - offset_buffers[0]) - \
                                   max_length) * 2
         initial_position[1] = int(array_shape_y - string_heights + \
-                                  offset_buffers[1])
+                                  offset_buffers[1]) + 250
     if position == 'bl':
         initial_position[0] = initial_position[0] + offset_buffers[0]
         initial_position[1] = array_shape_y + string_heights + offset_buffers[1]
-    input_frame = cv2.cvtColor(input_frame, cv2.COLOR_RGB2RGBA)
     y_track = initial_position[1]
     for line in input_stats:
         line_width = font.getsize(line)[0]
@@ -186,14 +258,19 @@ def write_summary_statistics(
             (_x_pos, y_track),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
-            0xfffff,
-            6,
+            [255, 255, 255],
+            2,
             cv2.LINE_AA,
         )
         y_track = y_track - 30
-    cnd = write_frame[:, :, 3] > 0
-    input_frame[cnd] = write_frame[cnd]
-    return input_frame
+    output_frame = cv2.addWeighted(
+        input_frame,
+        1,
+        write_frame,
+        1.5,
+        0,
+    )
+    return output_frame
 
 
 @click.command()
@@ -210,8 +287,7 @@ def make_gif(input_file: str):
         input_frames.iter_axes = 'vtc'
         observation_start_stop = []
         number = frame_count * channels
-        print(input_frames.get_timesteps())
-        for observation in range(number - 1):
+        for observation in range(number):
             observation_start_stop.append(
                 [
                     (observation * number),
@@ -220,74 +296,80 @@ def make_gif(input_file: str):
                     f'{input_file.split("/")[-1][:-3]}_{observation}',
                 ]
             )
-        events = input_frames.events
-        for start, stop, stride, label in tqdm.tqdm(observation_start_stop):
+        channels = input_frames.metadata['channels']
+        for start, stop, stride, label in observation_start_stop:
             interior_list = []
-            for frame_index in range(start, stop, stride):
-                grey_frame = input_frames[frame_index]
-                cherry_frame = input_frames[frame_index + 1]
-                yfp_frame = input_frames[frame_index + 2]
-                date = input_frames.metadata['date']
-                stats_list = generate_summary_statistics(
-                    date,
-                    cherry_frame,
-                    yfp_frame,
-                    frame_index,
-                )
-                grey_frame = adaptive_thresholding(grey_frame)
-                grey_frame = colorize_frame(
-                    grey_frame,
-                    False,
-                )
-                grey_frame = modify_contrast(
-                    grey_frame,
-                    alpha=5,
-                    contrast=127,
-                )
-                cherry_frame = adaptive_thresholding(cherry_frame)
-                cherry_frame = colorize_frame(
-                    cherry_frame,
-                    'green',
-                )
-                cherry_frame = modify_contrast(
-                    cherry_frame,
-                    alpha=5,
-                    contrast=127,
-                )
-                yfp_frame = adaptive_thresholding(yfp_frame)
-                yfp_frame = colorize_frame(
-                    yfp_frame,
-                    'red',
-                )
-                yfp_frame = modify_contrast(
-                    yfp_frame,
-                    alpha=5,
-                    contrast=127,
-                )
-
-                intermediate_frame = cv2.addWeighted(
-                    grey_frame,
-                    1,
-                    cherry_frame,
-                    0.75,
-                    0,
-                )
-                intermediate_frame = cv2.cvtColor(intermediate_frame, cv2.COLOR_GRAY2RGB)
-                out_frame = cv2.addWeighted(
-                    intermediate_frame,
-                    1,
-                    yfp_frame,
-                    0.75,
-                    0,
-                )
-                out_frame = adaptive_thresholding(out_frame)
-                out_frame = write_summary_statistics(
-                    out_frame,
-                    stats_list,
-                )
-                interior_list.append(out_frame)
-            print(f'{label}.gif')
-            imageio.mimsave(f'{label}.gif', interior_list)
+            try:
+                for frame_index in tqdm.tqdm(
+                        range(start, stop, stride),
+                        desc=f'Converting {label} into gif...',
+                ):
+                    initial_frame = input_frames[frame_index]
+                    c2_frame = input_frames[frame_index + 1]
+                    c3_frame = input_frames[frame_index + 2]
+                    if any(
+                            map(
+                                empty_frame_check,
+                                [initial_frame, c2_frame, c3_frame]
+                            )
+                    ):
+                        continue
+                    stats_list = generate_summary_statistics(
+                        [c2_frame, channels[1]],
+                        [c3_frame, channels[2]],
+                        frame_index % number,
+                    )
+                    initial_frame, c2_frame, c3_frame = map(
+                        downsample_image,
+                        [initial_frame, c2_frame, c3_frame],
+                    )
+                    # !!!
+                    # IF YOU WANT TO CHANGE THE CONTRAST AND BRIGHTNESS DO IT
+                    # IN THE BELOW FUNCTIONS.
+                    c2_frame = apply_brightness_contrast(
+                        c2_frame,
+                        alpha=12,
+                        beta=0,
+                    )
+                    c3_frame = apply_brightness_contrast(
+                        c3_frame,
+                        alpha=12,
+                        beta=0,
+                    )
+                    initial_frame = colorize_frame(
+                        initial_frame,
+                        'grey',
+                    )
+                    c2_frame = colorize_frame(
+                        c2_frame,
+                        'red',
+                    )
+                    c3_frame = colorize_frame(
+                        c3_frame,
+                        'green',
+                    )
+                    intermediate_frame = cv2.addWeighted(
+                        initial_frame,
+                        1,
+                        c2_frame,
+                        0.75,
+                        0,
+                    )
+                    out_frame = cv2.addWeighted(
+                        intermediate_frame,
+                        1,
+                        c3_frame,
+                        0.75,
+                        0,
+                    )
+                    out_frame = write_summary_statistics(
+                        out_frame,
+                        stats_list,
+                    )
+                    interior_list.append(out_frame)
+                imageio.mimsave(f'{label}.gif', interior_list)
+            except IndexError:
+                exit(0)
 
 
 if __name__ == '__main__':
