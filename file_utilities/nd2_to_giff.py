@@ -366,7 +366,8 @@ def make_gif(input_file: str):
                         out_frame,
                         stats_list,
                     )
-                    interior_list.append(out_frame)
+                    for i in range(2):
+                        interior_list.append(out_frame)
                 imageio.mimsave(f'{label}.gif', interior_list)
             except IndexError:
                 exit(0)
