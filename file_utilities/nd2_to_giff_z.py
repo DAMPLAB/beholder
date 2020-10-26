@@ -246,7 +246,7 @@ def write_summary_statistics(
         initial_position[0] = int((array_shape_x - offset_buffers[0]) - \
                                   max_length) * 2
         initial_position[1] = int(array_shape_y - string_heights + \
-                                  offset_buffers[1]) + 250
+                                  offset_buffers[1]) + 150
     if position == 'bl':
         initial_position[0] = initial_position[0] + offset_buffers[0]
         initial_position[1] = array_shape_y + string_heights + offset_buffers[1]
@@ -299,7 +299,7 @@ def make_gif(input_file: str):
                     f'{input_file.split("/")[-1][:-3]}_{observation}',
                     ]
             )
-        channels =nd2reader.ND2Reader(input_file).metadata['channels']
+        channels = ['blah', 'bloo', 'thing']
         for start, stop, stride, label in observation_start_stop:
             interior_list = []
             try:
