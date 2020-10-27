@@ -16,7 +16,6 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
 import datetime
-import warnings
 from typing import (
     List,
     Union,
@@ -25,14 +24,13 @@ from typing import (
 import click
 import cv2
 import imageio
-import nd2reader
 import numpy as np
 import tqdm
 from PIL import (
     ImageFont,
 )
-from pims import FramesSequenceND
 from pims import ND2_Reader as nd2_sdk
+
 
 # warnings.filterwarnings("ignore", category=UserWarning)
 # warnings.filterwarnings("ignore", category=RuntimeWarning)

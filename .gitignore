@@ -146,6 +146,7 @@ databases/%
 # Bunch of images that we don't want.
 example_files/
 test/
+data/
 
 # Generates some serialized datastructures we don't want to commit
 *.pkl
