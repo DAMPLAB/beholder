@@ -155,4 +155,6 @@ data/
 # We don't want to have any image data in the git tree
 *.jpg
 *.png
+*.gif
+
 
