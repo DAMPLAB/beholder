@@ -18,8 +18,10 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.figure as m_figure
 from signal_processing.stats import CellSignal
 from PIL import Image, ImageDraw, ImageFont
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 
 def plot_histogram(input_array: np.ndarray):
@@ -203,20 +205,22 @@ def plot_total(total_statistics: List[Tuple[float, float]]):
     plt.show()
 
 
-def generate_segmentation_pipe_viz(
+def generate_multiplot(
         frame_list: List[np.ndarray],
         frame_annotations: List[str],
+        context: str = 'active_frame',
 ):
-    plt.figure(figsize=(16, 3))
-    # fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4)
+    fig = plt.figure(figsize=(16, 3))
+    canvas = FigureCanvasAgg(fig)
     gs1 = gridspec.GridSpec(1, 4)
     gs1.update(wspace=0.2, hspace=0.02)
     plt.margins(.5, .5)
-    # plt.gca().xaxis.set_major_locator(plt.NullLocator())
-    # plt.gca().yaxis.set_major_locator(plt.NullLocator())
     for i, anno in enumerate(frame_annotations):
         ax1 = plt.subplot(gs1[i])
-        ax1.imshow(frame_list[i][:, :], interpolation='nearest')
+        if not i:
+            ax1.imshow(frame_list[i][:, :], cmap='gray')
+        else:
+            ax1.imshow(frame_list[i][:, :], interpolation='nearest')
         ax1.set_title(anno)
         plt.axis('off')
         ax1.set_xticklabels([])
@@ -228,8 +232,16 @@ def generate_segmentation_pipe_viz(
         rec = ax1.add_patch(rec)
         rec.set_clip_on(False)
     plt.axis('off')
-    plt.savefig(
-        "test.jpg",
-        bbox_inches='tight',
-        pad_inches=.2,
-    )
+    if context == 'to_disk':
+        plt.savefig(
+            "test1.jpg",
+            bbox_inches='tight',
+            pad_inches=.2,
+        )
+    if context == 'active_frame':
+        canvas.draw()
+        buf = canvas.buffer_rgba()
+        return np.asarray(buf)
+
+
+

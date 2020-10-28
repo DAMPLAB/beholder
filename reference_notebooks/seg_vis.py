@@ -82,14 +82,10 @@ def segmentation_pipeline(input_fn: str):
         input_fn
     )
     prepro_frame = copy.copy(grey_frame)
-    c_red_frame = preprocess_color_channel(red_frame, 'red')
-    # sigpro_utility.display_frame(green_frame)
+    c_red_frame = preprocess_color_channel(red_frame, 'blue')
     c_green_frame = preprocess_color_channel(green_frame, 'green')
-    # sigpro_utility.display_frame(green_frame)
     mask_frame = np.zeros_like(grey_frame)
     contours = preprocess_initial_grey_and_find_contours(grey_frame)
-    g_contours = preprocess_initial_color_and_find_contours(green_frame)
-    # g_contours = contour_filtration(g_contours)
     contours = contour_filtration(contours)
     green_cell_signals = stats.fluorescence_detection(
         grey_frame,
@@ -112,7 +108,7 @@ def segmentation_pipeline(input_fn: str):
         red_cell_signals,
     )
     labeled_green = signal_transform.colorize_frame(labeled_green, 'green')
-    labeled_red = signal_transform.colorize_frame(labeled_red, 'red')
+    labeled_red = signal_transform.colorize_frame(labeled_red, 'blue')
     d_grey_frame = signal_transform.downsample_image(grey_frame)
     out_frame = signal_transform.combine_frame(
         d_grey_frame,
@@ -135,7 +131,7 @@ def segmentation_pipeline(input_fn: str):
     mask_frame = generate_mask(mask_frame, contours)
     frame_list = [grey_frame, contour_frame, mask_frame, out_frame]
     frame_annotations = ['Preprocess', 'Contour', 'Mask', 'Output']
-    graphing.generate_segmentation_pipe_viz(frame_list, frame_annotations)
+    graphing.generate_multiplot(frame_list, frame_annotations, 'to_disk')
 
 
 if __name__ == '__main__':

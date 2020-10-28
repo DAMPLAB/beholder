@@ -362,7 +362,7 @@ def combine_frame(
         input_frame_one: np.ndarray,
         input_frame_two: np.ndarray,
         alpha: int = 1,
-        beta: float = 0.75,
+        beta: float = 0.25,
         gamma: float = 0,
 ) -> np.ndarray:
     '''

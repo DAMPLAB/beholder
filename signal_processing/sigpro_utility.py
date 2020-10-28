@@ -41,6 +41,9 @@ def empty_frame_check(input_frame: np.ndarray) -> bool:
         return True
     return False
 
+def get_channel_names(fp: str):
+    with nd2reader.ND2Reader(fp) as input_frames:
+        return input_frames.metadata['channels']
 
 def parse_nd2_file(fn: str):
     out_list = []
