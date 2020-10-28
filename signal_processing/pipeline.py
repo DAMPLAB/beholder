@@ -7,7 +7,13 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+import datetime
+from typing import Tuple
+
+import imageio
 import numpy as np
+import tqdm
+
 from signal_processing import (
     signal_transform,
     sigpro_utility,
@@ -26,29 +32,22 @@ def preprocess_initial_grey_and_find_contours(initial_frame: np.ndarray):
     contours = signal_transform.find_contours(out_frame)
     return contours
 
+
 def preprocess_initial_color_and_find_contours(initial_frame: np.ndarray):
     # Each image transform should be giving us back an np.ndarray of the same
     # shape and size.
-    sigpro_utility.display_frame(initial_frame, 'initial')
     out_frame = signal_transform.downsample_image(initial_frame)
-    sigpro_utility.display_frame(initial_frame, 'down sample')
     out_frame = signal_transform.apply_brightness_contrast(
         out_frame,
         alpha=2,
         beta=0,
     )
-    sigpro_utility.display_frame(out_frame, 'contrast increase')
     out_frame = signal_transform.percentile_threshold(out_frame, 80, 98)
-    sigpro_utility.display_frame(out_frame, 'threshold')
     out_frame = signal_transform.invert_image(out_frame)
-    sigpro_utility.display_frame(out_frame, 'invert')
     out_frame = signal_transform.remove_background(out_frame)
-    sigpro_utility.display_frame(out_frame, 'background removal')
     out_frame = signal_transform.downsample_image(out_frame)
-    sigpro_utility.display_frame(out_frame, 'downsample')
     contours = signal_transform.find_contours(out_frame)
     return contours
-
 
 
 def preprocess_color_channel(
@@ -70,13 +69,14 @@ def preprocess_color_channel(
 def contour_filtration(contours):
     # TODO: We then need to refine our approach in terms of segmentation either
     #  via eroding or some other mechanism. I think edge delineation is being
-    #  confounded by
+    #  confounded by the lack of depth in the microscopy image and the
+    #  microfluidic device it's being housed in.
     filtered_contours = signal_transform.cellular_highpass_filter(contours)
     return filtered_contours
 
 
 def generate_mask(input_frame: np.ndarray, contours):
-    out_frame = graphing.draw_contours(
+    out_frame = graphing.draw_mask(
         input_frame,
         contours,
         colouration='rainbow',
@@ -84,18 +84,14 @@ def generate_mask(input_frame: np.ndarray, contours):
     return out_frame
 
 
-def segmentation_pipeline(input_fn: str):
-    grey_frame, red_frame, green_frame = sigpro_utility.open_microscopy_image(
-        input_fn
-    )
+def segmentation_pipeline(
+        input_frames: Tuple[np.ndarray, np.ndarray, np.ndarray],
+):
+    grey_frame, red_frame, green_frame = input_frames
     c_red_frame = preprocess_color_channel(red_frame, 'red')
-    # sigpro_utility.display_frame(green_frame)
     c_green_frame = preprocess_color_channel(green_frame, 'green')
-    # sigpro_utility.display_frame(green_frame)
     mask_frame = np.zeros_like(grey_frame)
     contours = preprocess_initial_grey_and_find_contours(grey_frame)
-    g_contours = preprocess_initial_color_and_find_contours(green_frame)
-    # g_contours = contour_filtration(g_contours)
     contours = contour_filtration(contours)
     green_cell_signals = stats.fluorescence_detection(
         grey_frame,
@@ -106,6 +102,10 @@ def segmentation_pipeline(input_fn: str):
         grey_frame,
         red_frame,
         contours,
+    )
+    frame_stats = stats.generate_frame_stats(
+        green_cell_signals,
+        red_cell_signals,
     )
     labeled_green = graphing.label_cells(
         signal_transform.downsample_image(green_frame),
@@ -137,10 +137,24 @@ def segmentation_pipeline(input_fn: str):
         labeled_green,
     )
     mask_frame = generate_mask(mask_frame, contours)
-    sigpro_utility.display_frame(out_frame)
-    sigpro_utility.display_frame(mask_frame)
+    return out_frame, frame_stats
 
 
 if __name__ == '__main__':
-    input_file = "../data/agarose_pads/SR15_1mM_IPTG_Agarose_TS_1h_1.nd2"
-    segmentation_pipeline(input_file)
+    # We need a function that takes an ND2, extracts all of the color channels,
+    # and returns tuples of each frame with it's constiuent channels as a big
+    # ass list
+    fn = "../data/agarose_pads/SR15_1mM_IPTG_Agarose_TS_1h_1.nd2"
+    frames = sigpro_utility.parse_nd2_file(fn)
+    final_frame = []
+    final_stats = []
+    for frame in tqdm.tqdm(frames):
+        out_frame, frame_stats = segmentation_pipeline(frame)
+        final_frame.append(out_frame)
+        final_stats.append(frame_stats)
+    graphing.plot_total(final_stats)
+    stats.write_stat_record(
+        final_stats,
+        f'{(fn.split("/")[-1])[:-3]}_{datetime.datetime.now().date()}.csv'
+    )
+    imageio.mimsave(f'test.gif', final_frame)

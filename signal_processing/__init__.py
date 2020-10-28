@@ -8,7 +8,7 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
 from .graphing import (
-    draw_contours,
+    draw_mask,
     label_cells,
 )
 from .signal_transform import (

@@ -18,6 +18,68 @@ from pims import ND2_Reader as nd2_sdk
 
 
 # --------------------------- Utility Functionality ----------------------------
+def empty_frame_check(input_frame: np.ndarray) -> bool:
+    '''
+    Checks to see if the inputted frame is empty.
+
+    An implementation detail from the underlying nd2reader library we're using:
+    Discontinuous or dropped frames are represented by NaN values instead of
+    zeroes which will later be implicitly cast to zeroes when being persisted
+    to disk. There does seem to be some places where there is a mismatch
+    between channels which results in the resultant image being off in terms
+    of stride.
+
+    Args:
+        input_frame: Input numpy array
+
+    Returns:
+        Whether or not the frame is 'emtpy'
+
+    '''
+    nan_converted_frame = np.nan_to_num(input_frame)
+    if np.sum(nan_converted_frame) == 0:
+        return True
+    return False
+
+
+def parse_nd2_file(fn: str):
+    out_list = []
+    try:
+        with nd2reader.ND2Reader(fn) as input_frames:
+            input_frames.iter_axes = 'vtc'
+            for start_idx in range(0, len(input_frames), 3):
+                grey_frame = input_frames[start_idx]
+                ch1_frame = input_frames[start_idx + 1]
+                ch2_frame = input_frames[start_idx + 2]
+                if any(
+                        map(
+                            empty_frame_check,
+                            [grey_frame, ch1_frame, ch2_frame]
+                        )
+                ):
+                    continue
+                else:
+                    out_list.append((grey_frame, ch1_frame, ch2_frame))
+    # Try/except logic to spackle over some of the weird indexing issues
+    # that seem to occur for three dimensional images vice two dimensional
+    except KeyError:
+        with nd2_sdk(fn) as input_frames:
+            input_frames.iter_axes = 'mtc'
+            for start_idx in range(0, len(input_frames), 3):
+                grey_frame = input_frames[start_idx]
+                ch1_frame = input_frames[start_idx + 1]
+                ch2_frame = input_frames[start_idx + 2]
+                if any(
+                        map(
+                            empty_frame_check,
+                            [grey_frame, ch1_frame, ch2_frame]
+                        )
+                ):
+                    continue
+                else:
+                    out_list.append((grey_frame, ch1_frame, ch2_frame))
+    return out_list
+
 
 def open_microscopy_image(filename: str) -> np.ndarray:
     '''

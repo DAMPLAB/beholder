@@ -7,15 +7,20 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+from fractions import Fraction
 import random as rng
 from typing import (
     List,
+    Tuple,
 )
 
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from signal_processing.stats import CellSignal
+from PIL import Image, ImageDraw, ImageFont
+
 
 def plot_histogram(input_array: np.ndarray):
     hist, bins = np.histogram(input_array)
@@ -25,8 +30,24 @@ def plot_histogram(input_array: np.ndarray):
     plt.show()
 
 
-
 def draw_contours(
+        input_frame: np.ndarray,
+        contour_list: List[np.ndarray],
+        stroke: int = 3,
+) -> np.ndarray:
+    input_frame = cv2.cvtColor(input_frame, cv2.COLOR_GRAY2RGB)
+    for contour_idx in range(len(contour_list)):
+        input_frame = cv2.drawContours(
+            input_frame,
+            contour_list,
+            contour_idx,
+            0,
+            stroke,
+        )
+    return input_frame
+
+
+def draw_mask(
         input_frame: np.ndarray,
         contour_list: List[np.ndarray],
         stroke: int = -1,
@@ -136,8 +157,79 @@ def label_cells(
     return input_frame
 
 
-def generate_frame_report():
-    # Calculate Mean Fluorence for channels
-    # Calculate Standard Deviation for Channels
+def plot_total(total_statistics: List[Tuple[float, float]]):
+    '''
 
-    pass
+    Args:
+        total_statistics:
+
+    Returns:
+
+    '''
+    channel_one_stats = []
+    channel_two_stats = []
+    for stat_pair in total_statistics:
+        c1_stat, c2_stat = stat_pair
+        channel_one_stats.append(c1_stat)
+        channel_two_stats.append(c2_stat)
+    channel_one_median = [stat[0] for stat in channel_one_stats]
+    channel_one_std_dev = [stat[1] for stat in channel_one_stats]
+    channel_two_median = [stat[0] for stat in channel_two_stats]
+    channel_two_std_dev = [stat[1] for stat in channel_two_stats]
+    channel_one_pos = np.add(channel_one_median, channel_one_std_dev)
+    channel_one_neg = np.subtract(channel_one_median, channel_one_std_dev)
+    channel_two_pos = np.add(channel_two_median, channel_two_std_dev)
+    channel_two_neg = np.subtract(channel_two_median, channel_two_std_dev)
+    time_scale = range(len(channel_one_stats))
+    # We want the lower band, the higher band, and the actual value.
+
+    plt.fill_between(
+        time_scale,
+        channel_one_pos,
+        channel_one_neg,
+        alpha=.5,
+        color='green',
+    )
+    plt.fill_between(
+        time_scale,
+        channel_two_pos,
+        channel_two_neg,
+        alpha=.5,
+        color='red',
+    )
+    plt.plot(time_scale, channel_one_median, color='green')
+    plt.plot(time_scale, channel_two_median, color='red')
+    plt.legend()
+    plt.show()
+
+
+def generate_segmentation_pipe_viz(
+        frame_list: List[np.ndarray],
+        frame_annotations: List[str],
+):
+    plt.figure(figsize=(16, 3))
+    # fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4)
+    gs1 = gridspec.GridSpec(1, 4)
+    gs1.update(wspace=0.2, hspace=0.02)
+    plt.margins(.5, .5)
+    # plt.gca().xaxis.set_major_locator(plt.NullLocator())
+    # plt.gca().yaxis.set_major_locator(plt.NullLocator())
+    for i, anno in enumerate(frame_annotations):
+        ax1 = plt.subplot(gs1[i])
+        ax1.imshow(frame_list[i][:, :], interpolation='nearest')
+        ax1.set_title(anno)
+        plt.axis('off')
+        ax1.set_xticklabels([])
+        ax1.set_yticklabels([])
+        ax1.set_aspect('equal')
+        autoAxis = ax1.axis()
+        rec = plt.Rectangle((autoAxis[0] - 0.7, autoAxis[2] - 0.2), (autoAxis[1] - autoAxis[0]) + 1,
+                        (autoAxis[3] - autoAxis[2]) + 0.4, fill=False, lw=2)
+        rec = ax1.add_patch(rec)
+        rec.set_clip_on(False)
+    plt.axis('off')
+    plt.savefig(
+        "test.jpg",
+        bbox_inches='tight',
+        pad_inches=.2,
+    )

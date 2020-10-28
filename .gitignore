@@ -151,3 +151,8 @@ data/
 # Generates some serialized datastructures we don't want to commit
 *.pkl
 *.csv
+
+# We don't want to have any image data in the git tree
+*.jpg
+*.png
+
