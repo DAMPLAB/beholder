@@ -16,6 +16,7 @@ import numpy as np
 import nd2reader
 from pims import ND2_Reader as nd2_sdk
 
+
 # --------------------------- Utility Functionality ----------------------------
 
 def open_microscopy_image(filename: str) -> np.ndarray:
@@ -48,9 +49,6 @@ def open_microscopy_image(filename: str) -> np.ndarray:
             with nd2_sdk(filename) as input_frames:
                 input_frames.iter_axes = 'mtc'
                 return input_frames[0], input_frames[1], input_frames[2]
-
-
-
 
 
 def get_initial_image_nd2(input_nd2_file: str) -> np.ndarray:

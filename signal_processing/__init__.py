@@ -34,5 +34,5 @@ from .sigpro_utility import (
 )
 from .stats import (
     CellSignal,
-    fluoresence_detection,
+    fluorescence_detection,
 )

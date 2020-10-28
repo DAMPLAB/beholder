@@ -14,8 +14,16 @@ from typing import (
 
 import numpy as np
 import cv2
-
+import matplotlib.pyplot as plt
 from signal_processing.stats import CellSignal
+
+def plot_histogram(input_array: np.ndarray):
+    hist, bins = np.histogram(input_array)
+    width = 0.7 * (bins[1] - bins[0])
+    center = (bins[:-1] + bins[1:]) / 2
+    plt.bar(center, hist, align='center', width=width)
+    plt.show()
+
 
 
 def draw_contours(
@@ -100,24 +108,31 @@ def label_cells(
     # Next to bounding box put
     # input_frame = np.ndarray(input_frame)
     bbox_list = []
+    c_signal = [cell_st.sum_signal for cell_st in cell_stats]
+    hist, bins = np.histogram(c_signal)
+    bin_limit = bins[3]
     for contour in contour_list:
         polygon_contour = cv2.approxPolyDP(contour, 3, True)
         bbox_list.append(cv2.boundingRect(polygon_contour))
     for i in range(len(contour_list)):
         # Going to be colorized in a subsequent call.
         c_stats = cell_stats[i]
-        input_frame = cv2.rectangle(
-            input_frame,
-            (bbox_list[i][0], bbox_list[i][1]),
-            ((bbox_list[i][0] + bbox_list[i][2]), bbox_list[i][1] + bbox_list[i][3]),
-            255,
-            1)
-        input_frame = write_multiline(
-            input_frame,
-            f'{c_stats.sum_signal}',
-            bbox_list[i][0],
-            bbox_list[i][1],
-        )
+        if c_stats.sum_signal < bin_limit:
+            continue
+        else:
+            input_frame = cv2.rectangle(
+                input_frame,
+                (bbox_list[i][0], bbox_list[i][1]),
+                ((bbox_list[i][0] + bbox_list[i][2]),
+                 bbox_list[i][1] + bbox_list[i][3]),
+                255,
+                1)
+            input_frame = write_multiline(
+                input_frame,
+                f'{c_stats.sum_signal}',
+                bbox_list[i][0],
+                bbox_list[i][1],
+            )
     return input_frame
 
 

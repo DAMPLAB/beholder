@@ -13,13 +13,15 @@ from typing import List
 import cv2
 import numpy as np
 
+
 @dataclass
 class CellSignal:
     contour_index: int
     sum_signal: float
     fluorescent_pixels: List[float]
 
-def fluoresence_detection(
+
+def fluorescence_detection(
         grayscale_frame: np.ndarray,
         fluorescent_frame: np.ndarray,
         contour_list: List[np.ndarray],
@@ -60,5 +62,3 @@ def fluoresence_detection(
             )
             cell_signals.append(new_cell)
     return cell_signals
-
-

@@ -30,10 +30,17 @@ def preprocess_initial_color_and_find_contours(initial_frame: np.ndarray):
     # Each image transform should be giving us back an np.ndarray of the same
     # shape and size.
     sigpro_utility.display_frame(initial_frame, 'initial')
-    out_frame = signal_transform.apply_brightness_contrast(initial_frame)
-    # out_frame = signal_transform.percentile_threshold(initial_frame)
-    # sigpro_utility.display_frame(out_frame, 'contrast')
-    # out_frame = signal_transform.invert_image(out_frame)
+    out_frame = signal_transform.downsample_image(initial_frame)
+    sigpro_utility.display_frame(initial_frame, 'down sample')
+    out_frame = signal_transform.apply_brightness_contrast(
+        out_frame,
+        alpha=2,
+        beta=0,
+    )
+    sigpro_utility.display_frame(out_frame, 'contrast increase')
+    out_frame = signal_transform.percentile_threshold(out_frame, 80, 98)
+    sigpro_utility.display_frame(out_frame, 'threshold')
+    out_frame = signal_transform.invert_image(out_frame)
     sigpro_utility.display_frame(out_frame, 'invert')
     out_frame = signal_transform.remove_background(out_frame)
     sigpro_utility.display_frame(out_frame, 'background removal')
@@ -90,17 +97,12 @@ def segmentation_pipeline(input_fn: str):
     g_contours = preprocess_initial_color_and_find_contours(green_frame)
     # g_contours = contour_filtration(g_contours)
     contours = contour_filtration(contours)
-    green_cell_signals = stats.fluoresence_detection(
+    green_cell_signals = stats.fluorescence_detection(
         grey_frame,
         green_frame,
         contours,
     )
-    labeled_green = graphing.label_cells(
-        signal_transform.downsample_image(green_frame),
-        contours,
-        green_cell_signals,
-    )
-    red_cell_signals = stats.fluoresence_detection(
+    red_cell_signals = stats.fluorescence_detection(
         grey_frame,
         red_frame,
         contours,
@@ -110,18 +112,32 @@ def segmentation_pipeline(input_fn: str):
         contours,
         green_cell_signals,
     )
+    labeled_red = graphing.label_cells(
+        signal_transform.downsample_image(red_frame),
+        contours,
+        red_cell_signals,
+    )
     labeled_green = signal_transform.colorize_frame(labeled_green, 'green')
+    labeled_red = signal_transform.colorize_frame(labeled_red, 'red')
     d_grey_frame = signal_transform.downsample_image(grey_frame)
     out_frame = signal_transform.combine_frame(
         d_grey_frame,
+        c_red_frame,
+    )
+    out_frame = signal_transform.combine_frame(
+        out_frame,
+        labeled_red,
+    )
+    out_frame = signal_transform.combine_frame(
+        out_frame,
         c_green_frame,
     )
     out_frame = signal_transform.combine_frame(
         out_frame,
         labeled_green,
     )
-
     mask_frame = generate_mask(mask_frame, contours)
+    sigpro_utility.display_frame(out_frame)
     sigpro_utility.display_frame(mask_frame)
 
 

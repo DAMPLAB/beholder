@@ -46,7 +46,7 @@ def normalize_frame(input_frame: np.ndarray) -> np.ndarray:
     return (255 * input_frame / np.max(input_frame)).astype(np.uint8)
 
 
-def percentile_threshold(input_frame, low_th=2, high_th=98) -> np.ndarray:
+def percentile_threshold(input_frame, low_th=1, high_th=98) -> np.ndarray:
     '''
 
     Args:
@@ -137,7 +137,6 @@ def unsharp_mask(
     return sharpened
 
 
-# I think that np.ndarray is wrong. Should be like a list of list of floats.
 def find_contours(input_frame: np.ndarray) -> np.ndarray:
     '''
 
@@ -273,9 +272,9 @@ def colorize_frame(input_frame: np.ndarray, color: str) -> np.ndarray:
     input_frame = cv2.cvtColor(input_frame, cv2.COLOR_GRAY2RGB)
     if color == 'green':
         input_frame[:, :, (0, 2)] = 0
-    if color == 'red':
-        input_frame[:, :, (1, 2)] = 0
     if color == 'blue':
+        input_frame[:, :, (1, 2)] = 0
+    if color == 'red':
         input_frame[:, :, (0, 1)] = 0
     return input_frame
 
