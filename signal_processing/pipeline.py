@@ -8,11 +8,15 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
 import datetime
+import multiprocessing as mp
 from typing import Tuple
 
 import imageio
 import numpy as np
 import tqdm
+from pygifsicle import optimize
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 from signal_processing import (
     signal_transform,
@@ -137,19 +141,20 @@ def segmentation_pipeline(
         labeled_green,
     )
     mask_frame = generate_mask(mask_frame, contours)
-    return out_frame, frame_stats
+    return out_frame, frame_stats, mask_frame
 
 
 if __name__ == '__main__':
     # We need a function that takes an ND2, extracts all of the color channels,
     # and returns tuples of each frame with it's constiuent channels as a big
     # ass list
-    fn = "../data/agarose_pads/SR15_1mM_IPTG_Agarose_TS_1h_1.nd2"
+    fn = "../data/New_SR_1_5_MC_TS10h.nd2"
     frames = sigpro_utility.parse_nd2_file(fn)
     final_frame = []
     final_stats = []
+    final_mask = []
     for frame in tqdm.tqdm(frames):
-        out_frame, frame_stats = segmentation_pipeline(frame)
+        out_frame, frame_stats, mask_frame = segmentation_pipeline(frame)
         final_frame.append(out_frame)
         final_stats.append(frame_stats)
     graphing.plot_total(final_stats)
@@ -157,4 +162,7 @@ if __name__ == '__main__':
         final_stats,
         f'{(fn.split("/")[-1])[:-3]}_{datetime.datetime.now().date()}.csv'
     )
-    imageio.mimsave(f'test.gif', final_frame)
+    imageio.mimsave(f'test1.gif', final_frame)
+    imageio.mimsave(f'mask.gif', final_mask)
+    optimize('test1.gif')
+    optimize('mask.gif')

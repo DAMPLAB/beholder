@@ -83,7 +83,7 @@ def generate_frame_stats(
     out_list = []
     for cell_set in [c1_cell_stats, c2_cell_stats]:
         c_signal = [cell_st.sum_signal for cell_st in cell_set]
-        hist, bins = np.histogram(c_signal)
+        hist, bins = np.histogram(c_signal, bins=100)
         bin_limit = bins[3]
         filtered_set = list(filter(lambda x: x.sum_signal < bin_limit, cell_set))
         f_signal = [fil_st.sum_signal for fil_st in filtered_set]

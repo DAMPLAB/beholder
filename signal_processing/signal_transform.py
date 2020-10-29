@@ -273,9 +273,9 @@ def colorize_frame(input_frame: np.ndarray, color: str) -> np.ndarray:
     if color == 'green':
         input_frame[:, :, (0, 2)] = 0
     if color == 'blue':
-        input_frame[:, :, (1, 2)] = 0
-    if color == 'red':
         input_frame[:, :, (0, 1)] = 0
+    if color == 'red':
+        input_frame[:, :, (1, 2)] = 0
     return input_frame
 
 

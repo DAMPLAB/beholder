@@ -132,8 +132,8 @@ def label_cells(
     # input_frame = np.ndarray(input_frame)
     bbox_list = []
     c_signal = [cell_st.sum_signal for cell_st in cell_stats]
-    hist, bins = np.histogram(c_signal)
-    bin_limit = bins[3]
+    hist, bins = np.histogram(c_signal, bins=100)
+    bin_limit = bins[8]
     for contour in contour_list:
         polygon_contour = cv2.approxPolyDP(contour, 3, True)
         bbox_list.append(cv2.boundingRect(polygon_contour))
@@ -176,8 +176,10 @@ def plot_total(total_statistics: List[Tuple[float, float]]):
         channel_two_stats.append(c2_stat)
     channel_one_median = [stat[0] for stat in channel_one_stats]
     channel_one_std_dev = [stat[1] for stat in channel_one_stats]
+    channel_one_cell_count = [stat[2] for stat in channel_one_stats]
     channel_two_median = [stat[0] for stat in channel_two_stats]
     channel_two_std_dev = [stat[1] for stat in channel_two_stats]
+    channel_two_cell_count = [stat[2] for stat in channel_two_stats]
     channel_one_pos = np.add(channel_one_median, channel_one_std_dev)
     channel_one_neg = np.subtract(channel_one_median, channel_one_std_dev)
     channel_two_pos = np.add(channel_two_median, channel_two_std_dev)
@@ -201,8 +203,15 @@ def plot_total(total_statistics: List[Tuple[float, float]]):
     )
     plt.plot(time_scale, channel_one_median, color='green')
     plt.plot(time_scale, channel_two_median, color='red')
+    plt.savefig('example.png')
+    plt.figure(2)
+    plt.plot(time_scale, channel_one_cell_count, color='lime')
+    plt.plot(time_scale, channel_two_cell_count, color='lightpink')
+    plt.savefig('example1.png')
+
+
     plt.legend()
-    plt.show()
+    # plt.show()
 
 
 def generate_multiplot(
