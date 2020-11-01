@@ -82,7 +82,7 @@ def segmentation_pipeline(input_fn: str):
         input_fn
     )
     prepro_frame = copy.copy(grey_frame)
-    c_red_frame = preprocess_color_channel(red_frame, 'blue')
+    c_red_frame = preprocess_color_channel(red_frame, 'red')
     c_green_frame = preprocess_color_channel(green_frame, 'green')
     mask_frame = np.zeros_like(grey_frame)
     contours = preprocess_initial_grey_and_find_contours(grey_frame)
@@ -108,7 +108,7 @@ def segmentation_pipeline(input_fn: str):
         red_cell_signals,
     )
     labeled_green = signal_transform.colorize_frame(labeled_green, 'green')
-    labeled_red = signal_transform.colorize_frame(labeled_red, 'blue')
+    labeled_red = signal_transform.colorize_frame(labeled_red, 'red')
     d_grey_frame = signal_transform.downsample_image(grey_frame)
     out_frame = signal_transform.combine_frame(
         d_grey_frame,

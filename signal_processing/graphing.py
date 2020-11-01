@@ -209,7 +209,6 @@ def plot_total(total_statistics: List[Tuple[float, float]]):
     plt.plot(time_scale, channel_two_cell_count, color='lightpink')
     plt.savefig('example1.png')
 
-
     plt.legend()
     # plt.show()
 
@@ -226,18 +225,28 @@ def generate_multiplot(
     plt.margins(.5, .5)
     for i, anno in enumerate(frame_annotations):
         ax1 = plt.subplot(gs1[i])
+        active_frame = frame_list[i]
         if not i:
-            ax1.imshow(frame_list[i][:, :], cmap='gray')
+            ax1.imshow(active_frame[
+                       int(active_frame.shape[0] / 2):int(active_frame.shape[0]),
+                       int(active_frame.shape[1] / 2):int(active_frame.shape[1])
+                       ],
+                       cmap='gray')
         else:
-            ax1.imshow(frame_list[i][:, :], interpolation='nearest')
+            ax1.imshow(active_frame[
+                       int(active_frame.shape[0] / 2):int(active_frame.shape[0]),
+                       int(active_frame.shape[1] / 2):int(active_frame.shape[1])
+                       ],
+                       interpolation='nearest')
         ax1.set_title(anno)
         plt.axis('off')
         ax1.set_xticklabels([])
         ax1.set_yticklabels([])
         ax1.set_aspect('equal')
         autoAxis = ax1.axis()
-        rec = plt.Rectangle((autoAxis[0] - 0.7, autoAxis[2] - 0.2), (autoAxis[1] - autoAxis[0]) + 1,
-                        (autoAxis[3] - autoAxis[2]) + 0.4, fill=False, lw=2)
+        rec = plt.Rectangle((autoAxis[0] - 0.7, autoAxis[2] - 0.2),
+                            (autoAxis[1] - autoAxis[0]) + 1,
+                            (autoAxis[3] - autoAxis[2]) + 0.4, fill=False, lw=2)
         rec = ax1.add_patch(rec)
         rec.set_clip_on(False)
     plt.axis('off')
@@ -251,6 +260,3 @@ def generate_multiplot(
         canvas.draw()
         buf = canvas.buffer_rgba()
         return np.asarray(buf)
-
-
-
