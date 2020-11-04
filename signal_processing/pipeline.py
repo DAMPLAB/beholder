@@ -21,7 +21,7 @@ from typing import (
 import imageio
 import numpy as np
 import tqdm
-from pygifsicle import optimize
+# from pygifsicle import optimize
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -244,8 +244,8 @@ def segmentation_ingress(fn:str):
     if os.path.exists('canvas.gif'):
         shutil.copyfile('canvas.gif', 'prior_canvas.gif')
     imageio.mimsave(f'canvas1.gif', canvas_list)
-    optimize('test1.gif')
-    optimize('mask.gif')
+    # optimize('test1.gif')
+    # optimize('mask.gif')
 
 
 if __name__ == '__main__':
