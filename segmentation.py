@@ -255,6 +255,7 @@ def segmentation_ingress(fn: str, subselection: int):
     out_structure = f'output/{title}.gif'
     if os.path.exists(out_structure):
         shutil.copyfile(out_structure, f'output/{title}_prior.gif')
+    imageio.mimsave(out_structure, canvas_list)
 
 
 if __name__ == '__main__':
