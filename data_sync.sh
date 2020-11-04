@@ -5,5 +5,6 @@
 # requirements. This can be accomplished via running in the terminal
 # $ aws configure
 # and supplying the required credentials
-# aws s3 sync data s3://beholder-data
+
+aws s3 sync data s3://beholder-data
 aws s3 sync s3://beholder-data data

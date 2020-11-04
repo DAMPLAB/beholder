@@ -451,16 +451,18 @@ def mask_recalculation_check(
         return True
     return False
 
+
 def normalize_subsection(
         input_frame: np.ndarray,
         mask_frame: np.ndarray,
         clip_value=None,
 ):
-    if clip_value is None:
+    if clip_value is None or not clip_value:
         hist, bin_edges = np.histogram(input_frame)
-        clip_value = bin_edges[4]
+        clip_value = bin_edges[0]
     input_frame[mask_frame] = clip_value
     return input_frame
+
 
 # -------------------------------- Subselection  -------------------------------
 def ghetto_submatrix_application(

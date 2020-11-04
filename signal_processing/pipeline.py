@@ -7,9 +7,11 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+import click
 import copy
 import datetime
 import multiprocessing as mp
+import os
 import shutil
 from typing import (
     Optional,
@@ -140,6 +142,7 @@ def segmentation_pipeline(
         current_device_mask_frame, sentinel_val = \
             signal_transform.device_highpass_filter(grey_frame)
     if not signal_transform.mask_recalculation_check(grey_frame, sentinel_val):
+        print('Mask Recalculation Occurring')
         current_device_mask_frame, sentinel_val = \
             signal_transform.device_highpass_filter(grey_frame)
     grey_frame = signal_transform.normalize_subsection(
@@ -199,11 +202,13 @@ def segmentation_pipeline(
     return out_frame, frame_stats, mask_frame, current_device_mask_frame, sentinel_val, raw_frame
 
 
-if __name__ == '__main__':
-    # We need a function that takes an ND2, extracts all of the color channels,
-    # and returns tuples of each frame with it's constiuent channels as a big
-    # ass list
-    fn = "../data/raw_nd2/New_SR_1_5_MC_TS10h.nd2"
+@click.command()
+@click.option(
+    '--fn',
+    default="../data/raw_nd2/New_SR_1_5_MC_TS10h.nd2",
+    help='Filepath to Input ND2 files.'
+)
+def segmentation_ingress(fn:str):
     frames = sigpro_utility.parse_nd2_file(fn)
     canvas_list = []
     final_frame = []
@@ -211,7 +216,7 @@ if __name__ == '__main__':
     final_mask = []
     title = (fn.split('/')[:-1])[:-4]
     current_device_mask, sentinel_value = None, None
-    # frames = frames[:5]
+    frames = frames[:120]
     frame_count = len(frames)
     for index, frame in enumerate(tqdm.tqdm(frames)):
         out_frame, frame_stats, mask_frame, current_device_mask, sentinel_value, raw_frame = segmentation_pipeline(
@@ -223,9 +228,9 @@ if __name__ == '__main__':
         final_stats.append(frame_stats)
         canvas_list.append(graphing.generate_image_canvas(
             out_frame,
-            raw_frame,
+            signal_transform.downsample_image(raw_frame),
             final_stats,
-            index,
+            f'{title}-{index}',
             frame_count
         ))
 
@@ -236,7 +241,12 @@ if __name__ == '__main__':
     )
     imageio.mimsave(f'test1.gif', final_frame)
     # imageio.mimsave(f'mask.gif', final_mask)
-    shutil.copyfile(f'canvas.gif', 'prior_canvas.gif')
-    imageio.mimsave(f'canvas.gif', canvas_list)
+    if os.path.exists('canvas.gif'):
+        shutil.copyfile('canvas.gif', 'prior_canvas.gif')
+    imageio.mimsave(f'canvas1.gif', canvas_list)
     optimize('test1.gif')
     optimize('mask.gif')
+
+
+if __name__ == '__main__':
+    segmentation_ingress()

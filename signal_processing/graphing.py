@@ -27,12 +27,13 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 
 # ------------------------------------------------------------------------------
-def plot_histogram(input_array: np.ndarray):
+def plot_histogram_notebook(input_array: np.ndarray):
     hist, bins = np.histogram(input_array)
     width = 0.7 * (bins[1] - bins[0])
     center = (bins[:-1] + bins[1:]) / 2
     plt.bar(center, hist, align='center', width=width)
-    plt.show()
+    plt.savefig('hist_tshoot.png')
+    # plt.show()
 
 
 def plot_notebook(input_array: np.ndarray):
@@ -350,14 +351,14 @@ def plot_cell_count(channel_one_stats, channel_two_stats):
     channel_two_cell_count = [stat[2] for stat in channel_two_stats]
     time_scale = range(len(channel_one_stats))
     # We want the lower band, the higher band, and the actual value.
-    plt.plot(time_scale[::-1], channel_one_cell_count[::-1], color='blue')  #
-    plt.plot(time_scale[::-1], channel_two_cell_count[::-1], color='purple')  #
+    plt.plot(time_scale[::-1], channel_one_cell_count[::-1], color='red')  #
+    plt.plot(time_scale[::-1], channel_two_cell_count[::-1], color='green')  #
     canvas.draw()
     buf = canvas.buffer_rgba()
     return buf
 
 
-def plot_histogram(input_frame, axis, plot_name):
+def plot_double_histogram(processed_frame, raw_frame, axis, plot_name):
     '''
 
     Returns:
@@ -366,11 +367,15 @@ def plot_histogram(input_frame, axis, plot_name):
     fig = plt.figure()
     canvas = FigureCanvasAgg(fig)
     plt.title(plot_name)
-    hist, bins = np.histogram(input_frame, bins=100)
-    center = (bins[:-1] + bins[1:]) / 2
-    axis.bar(center, hist, align='center', width=100)
+    p_hist, p_bins = np.histogram(processed_frame, bins=100)
+    r_hist, r_bins = np.histogram(raw_frame, bins=100)
+    center = (p_bins[:-1] + p_bins[1:]) / 2
+    axis.bar(center, p_hist, align='center', width=100, color='green')
+    axis.bar(center, r_hist, align='center', width=100, color='red')
     axis.set_xlim([0, 100])
-    axis.set_ylim([0, 10000000])
+    axis.set_ylim([0, 1000000])
+    axis.set_xticklabels([])
+    axis.set_yticklabels([])
     canvas.draw()
     buf = canvas.buffer_rgba()
     return buf
@@ -386,32 +391,22 @@ def generate_image_canvas(
     fig = plt.figure(figsize=(13, 6))
     canvas = FigureCanvasAgg(fig)
     grid = plt.GridSpec(7, 6, hspace=0.0, wspace=0.0)
-    # grid.update(wspace=0.2, hspace=0.2)
-    # plt.margins(.5, .5)
-    # plt.title(f'{title}')
+    plt.title(f'{title}')
     # Padding the Array to our final point
     stats_list += [[(0, 0, 0), (0, 0, 0)]] * (stats_final_size - len(stats_list))
-    # for i in range((stats_final_size - len(stats_list))):
-    #     stats_list.append([(0, 0), (0, 0)])
-    # Axis Declarations
-    # axis_1 = fig.add_subplot(grid[:2, :2])
-    # axis_2 = fig.add_subplot(grid[2:5, :1])
-    # axis_3 = fig.add_subplot(grid[2:5, 1:2])
-    # axis_4 = fig.add_subplot(grid[0:3, 3:4])
-    # axis_5 = fig.add_subplot(grid[3:6, 3:4])
     axis_1 = fig.add_subplot(grid[:6, :5])
     axis_2 = fig.add_subplot(grid[0:3, 4:6])
     axis_3 = fig.add_subplot(grid[3:6, 4:6])
-    axis_4 = fig.add_subplot(grid[6:7, 0:3])
-    axis_5 = fig.add_subplot(grid[6:7, 3:6])
+    axis_4 = fig.add_subplot(grid[6:7, :])
+    # axis_5 = fig.add_subplot(grid[6:7, 3:6])
     c1_stats, c2_stats = stat_splitter(stats_list)
     cell_signal = plot_cellular_signal(c1_stats, c2_stats)
     cell_count = plot_cell_count(c1_stats, c2_stats)
     # TODO: Work via Mutation.
-    plot_histogram(raw_frame, axis_4, 'Raw Frame')
-    plot_histogram(processed_frame, axis_5, 'Processed Frame')
+    plot_double_histogram(processed_frame, raw_frame, axis_4, 'Processed Frame')
+    plot_histogram_notebook(raw_frame)
     array_list = [processed_frame, cell_signal, cell_count]
-    axis_list = [axis_1, axis_2, axis_3, axis_4, axis_5]
+    axis_list = [axis_1, axis_2, axis_3]
     for array, axis in zip(array_list, axis_list):
         axis.imshow(array, interpolation='nearest')
         plt.axis('off')
@@ -419,6 +414,7 @@ def generate_image_canvas(
         axis.set_yticklabels([])
         axis.set_aspect('equal')
     plt.tight_layout()
+    plt.text(0.1, 0.9, 'matplotlib', ha='center', va='center')
     canvas.draw()
     buf = canvas.buffer_rgba()
     return np.asarray(buf)
