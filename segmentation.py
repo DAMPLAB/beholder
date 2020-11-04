@@ -17,11 +17,11 @@ from typing import (
     Optional,
     Tuple,
 )
+import warnings
 
 import imageio
 import numpy as np
 import tqdm
-# from pygifsicle import optimize
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -31,6 +31,10 @@ from signal_processing import (
     graphing,
     stats,
 )
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore")
 
 
 def calculate_attic(
@@ -142,7 +146,6 @@ def segmentation_pipeline(
         current_device_mask_frame, sentinel_val = \
             signal_transform.device_highpass_filter(grey_frame)
     if not signal_transform.mask_recalculation_check(grey_frame, sentinel_val):
-        print('Mask Recalculation Occurring')
         current_device_mask_frame, sentinel_val = \
             signal_transform.device_highpass_filter(grey_frame)
     grey_frame = signal_transform.normalize_subsection(
@@ -205,20 +208,30 @@ def segmentation_pipeline(
 @click.command()
 @click.option(
     '--fn',
-    default="../data/raw_nd2/New_SR_1_5_MC_TS10h.nd2",
-    help='Filepath to Input ND2 files.'
+    default="data/raw_nd2/New_SR_1_5_MC_TS10h.nd2",
+    prompt='Filepath to Input ND2 files.'
 )
-def segmentation_ingress(fn:str):
+@click.option(
+    '--subselection',
+    default=0,
+    prompt='Subselection of Frames. 0 indicates that segmentation will be '
+           'performed on all frames'
+)
+def segmentation_ingress(fn: str, subselection: int):
+    title = (fn.split('/')[-1])[:-4]
+    print(f'Loading {title}... (This may take a second)')
     frames = sigpro_utility.parse_nd2_file(fn)
+    print(f'Loading Complete!')
     canvas_list = []
     final_frame = []
     final_stats = []
-    final_mask = []
-    title = (fn.split('/')[:-1])[:-4]
     current_device_mask, sentinel_value = None, None
-    frames = frames[:120]
+    if subselection:
+        frames = frames[:subselection]
     frame_count = len(frames)
+    print(f'Starting Segmentation Pipeline..')
     for index, frame in enumerate(tqdm.tqdm(frames)):
+        # TODO: Too many outputs.
         out_frame, frame_stats, mask_frame, current_device_mask, sentinel_value, raw_frame = segmentation_pipeline(
             frame,
             current_device_mask,
@@ -230,7 +243,7 @@ def segmentation_ingress(fn:str):
             out_frame,
             signal_transform.downsample_image(raw_frame),
             final_stats,
-            f'{title}-{index}',
+            f'{title}- Frame: {index}',
             frame_count
         ))
 
@@ -239,13 +252,9 @@ def segmentation_ingress(fn:str):
         final_stats,
         f'{(fn.split("/")[-1])[:-3]}_{datetime.datetime.now().date()}.csv'
     )
-    imageio.mimsave(f'test1.gif', final_frame)
-    # imageio.mimsave(f'mask.gif', final_mask)
-    if os.path.exists('canvas.gif'):
-        shutil.copyfile('canvas.gif', 'prior_canvas.gif')
-    imageio.mimsave(f'canvas1.gif', canvas_list)
-    # optimize('test1.gif')
-    # optimize('mask.gif')
+    out_structure = f'output/{title}.gif'
+    if os.path.exists(out_structure):
+        shutil.copyfile(out_structure, f'output/{title}_prior.gif')
 
 
 if __name__ == '__main__':

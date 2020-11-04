@@ -32,7 +32,6 @@ def plot_histogram_notebook(input_array: np.ndarray):
     width = 0.7 * (bins[1] - bins[0])
     center = (bins[:-1] + bins[1:]) / 2
     plt.bar(center, hist, align='center', width=width)
-    plt.savefig('hist_tshoot.png')
     # plt.show()
 
 
