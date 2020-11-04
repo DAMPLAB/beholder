@@ -88,7 +88,11 @@ def remove_background(
     Returns:
 
     '''
+    # print(f'{np.mean(input_frame)=}')
+    hist, bins = np.histogram(input_frame)
+    # print(f'{bins=}')
     background_level = np.mean(input_frame) * adjustment
+    background_level = bins[0]
     return input_frame - background_level
 
 
@@ -412,3 +416,91 @@ def cellular_highpass_filter(contours):
         if c_area > 100:
             out_list.append(c_value)
     return out_list
+
+
+def device_highpass_filter(
+        input_frame: np.ndarray,
+        selection_threshold: int = 3,
+) -> Tuple[np.ndarray, float]:
+    '''
+    Generates a mask and a median value for the underlying signal.
+    Args:
+        input_frame:
+        selection_threshold:
+
+    Returns:
+
+    '''
+    hist, bin_edges = np.histogram(input_frame)
+    filter = bin_edges[selection_threshold]
+    out_frame = input_frame > filter
+    return out_frame, np.median(out_frame)
+
+
+def mask_recalculation_check(
+        input_frame: np.ndarray,
+        original_value: float,
+        acceptable_deviance: float = 20.0,
+) -> bool:
+    current_median = np.median(input_frame)
+    lower_bound = original_value - \
+                  (original_value * (acceptable_deviance / 100))
+    upper_bound = original_value + \
+                  (original_value * (acceptable_deviance / 100))
+    if lower_bound < current_median < upper_bound:
+        return True
+    return False
+
+def normalize_subsection(
+        input_frame: np.ndarray,
+        mask_frame: np.ndarray,
+        clip_value=None,
+):
+    if clip_value is None:
+        hist, bin_edges = np.histogram(input_frame)
+        clip_value = bin_edges[4]
+    input_frame[mask_frame] = clip_value
+    return input_frame
+
+# -------------------------------- Subselection  -------------------------------
+def ghetto_submatrix_application(
+        input_frame: np.ndarray,
+        point_one: Tuple[int, int],
+        point_two: Tuple[int, int],
+        func,  # Lambda function
+):
+    '''
+    This is probably wrong. TODO: Fix shitty transpose.
+    Args:
+        input_frame:
+        point_one:
+        point_two:
+        func:
+
+    Returns:
+
+    '''
+    x_0, x_1 = point_one[1], point_two[1]
+    y_0, y_1 = point_one[0], point_two[0]
+    for i in range(x_0, x_1):
+        for j in range(y_0, y_1):
+            input_frame[i][j] = func(input_frame[i][j])
+    return input_frame
+
+
+def mask_subselection(
+        input_frame: np.ndarray,
+        point_one: Tuple[int, int],
+        point_two: Tuple[int, int],
+        value: int,
+):
+    func = lambda x: x - value
+    return ghetto_submatrix_application(input_frame, point_one, point_two, func)
+
+
+def crop_from_points(
+        input_frame: np.ndarray,
+        p0: Tuple[int, int],
+        p1: Tuple[int, int],
+):
+    return input_frame[p0[0]:p1[0], p0[1]:p1[1]]

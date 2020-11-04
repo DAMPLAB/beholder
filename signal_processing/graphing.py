@@ -7,6 +7,8 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+import copy
+
 from fractions import Fraction
 import random as rng
 from typing import (
@@ -24,6 +26,7 @@ from PIL import Image, ImageDraw, ImageFont
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 
+# ------------------------------------------------------------------------------
 def plot_histogram(input_array: np.ndarray):
     hist, bins = np.histogram(input_array)
     width = 0.7 * (bins[1] - bins[0])
@@ -32,6 +35,12 @@ def plot_histogram(input_array: np.ndarray):
     plt.show()
 
 
+def plot_notebook(input_array: np.ndarray):
+    plt.imshow(input_array, cmap='gray')
+    plt.show()
+
+
+# ------------------------------------------------------------------------------
 def draw_contours(
         input_frame: np.ndarray,
         contour_list: List[np.ndarray],
@@ -133,33 +142,36 @@ def label_cells(
     bbox_list = []
     c_signal = [cell_st.sum_signal for cell_st in cell_stats]
     hist, bins = np.histogram(c_signal, bins=100)
-    bin_limit = bins[8]
+    bin_limit = bins[2]
     for contour in contour_list:
         polygon_contour = cv2.approxPolyDP(contour, 3, True)
         bbox_list.append(cv2.boundingRect(polygon_contour))
     for i in range(len(contour_list)):
         # Going to be colorized in a subsequent call.
         c_stats = cell_stats[i]
-        if c_stats.sum_signal < bin_limit:
-            continue
-        else:
-            input_frame = cv2.rectangle(
-                input_frame,
-                (bbox_list[i][0], bbox_list[i][1]),
-                ((bbox_list[i][0] + bbox_list[i][2]),
-                 bbox_list[i][1] + bbox_list[i][3]),
-                255,
-                1)
-            input_frame = write_multiline(
-                input_frame,
-                f'{c_stats.sum_signal}',
-                bbox_list[i][0],
-                bbox_list[i][1],
-            )
+        # if c_stats.sum_signal < bin_limit:
+        #     print('Hewwo')
+        # else:
+        input_frame = cv2.rectangle(
+            input_frame,
+            (bbox_list[i][0], bbox_list[i][1]),
+            ((bbox_list[i][0] + bbox_list[i][2]),
+             bbox_list[i][1] + bbox_list[i][3]),
+            255,
+            1)
+        input_frame = write_multiline(
+            input_frame,
+            f'{c_stats.sum_signal}',
+            bbox_list[i][0],
+            bbox_list[i][1],
+        )
     return input_frame
 
 
-def plot_total(total_statistics: List[Tuple[float, float]]):
+def plot_total(
+        total_statistics: List[Tuple[float, float, float]],
+        context: str = 'save',
+):
     '''
 
     Args:
@@ -170,6 +182,9 @@ def plot_total(total_statistics: List[Tuple[float, float]]):
     '''
     channel_one_stats = []
     channel_two_stats = []
+    out_list = []
+    fig = plt.figure()
+    canvas = FigureCanvasAgg(fig)
     for stat_pair in total_statistics:
         c1_stat, c2_stat = stat_pair
         channel_one_stats.append(c1_stat)
@@ -186,31 +201,47 @@ def plot_total(total_statistics: List[Tuple[float, float]]):
     channel_two_neg = np.subtract(channel_two_median, channel_two_std_dev)
     time_scale = range(len(channel_one_stats))
     # We want the lower band, the higher band, and the actual value.
-
-    plt.fill_between(
+    ax1.fill_between(
         time_scale,
         channel_one_pos,
         channel_one_neg,
         alpha=.5,
         color='green',
     )
-    plt.fill_between(
+    ax1.fill_between(
         time_scale,
         channel_two_pos,
         channel_two_neg,
         alpha=.5,
         color='red',
     )
-    plt.plot(time_scale, channel_one_median, color='green')
-    plt.plot(time_scale, channel_two_median, color='red')
-    plt.savefig('example.png')
-    plt.figure(2)
-    plt.plot(time_scale, channel_one_cell_count, color='lime')
-    plt.plot(time_scale, channel_two_cell_count, color='lightpink')
-    plt.savefig('example1.png')
-
-    plt.legend()
+    ax1.plot(time_scale[::-1], channel_one_median[::-1], color='green')  #
+    ax1.plot(time_scale[::-1], channel_two_median[::-1], color='red')  #
+    if context == 'save':
+        plt.savefig('example.png')
+    if context == 'subplot':
+        canvas.draw()
+        buf = canvas.buffer_rgba()
+        buf_1 = buf[:]
+        out_list.append(buf_1)
+    # plt.clf()
+    # plt.cla()
+    # plt.close()
+    ax2.plot(time_scale[::-1], channel_one_cell_count[::-1], color='blue')  #
+    ax2.plot(time_scale[::-1], channel_two_cell_count[::-1], color='purple')  #
+    if context == 'save':
+        plt.savefig('example1.png')
+    if context == 'subplot':
+        canvas.draw()
+        buf = canvas.buffer_rgba()
+        buf_2 = buf[:]
+        out_list.append(buf_2)
+    # plt.legend()
     # plt.show()
+    if context == 'subplot':
+        canvas.draw()
+        buf = canvas.buffer_rgba()
+        return buf
 
 
 def generate_multiplot(
@@ -260,3 +291,134 @@ def generate_multiplot(
         canvas.draw()
         buf = canvas.buffer_rgba()
         return np.asarray(buf)
+
+
+def stat_splitter(
+        total_statistics: List[Tuple[float, float]],
+):
+    channel_one_stats = []
+    channel_two_stats = []
+    for stat_pair in total_statistics:
+        c1_stat, c2_stat = stat_pair
+        channel_one_stats.append(c1_stat)
+        channel_two_stats.append(c2_stat)
+    return channel_one_stats, channel_two_stats
+
+
+def plot_cellular_signal(channel_one_stats, channel_two_stats):
+    fig = plt.figure()
+    canvas = FigureCanvasAgg(fig)
+    plt.title('Cellular Signal')
+    channel_one_median = [stat[0] for stat in channel_one_stats]
+    channel_one_std_dev = [stat[1] for stat in channel_one_stats]
+    channel_two_median = [stat[0] for stat in channel_two_stats]
+    channel_two_std_dev = [stat[1] for stat in channel_two_stats]
+    channel_one_pos = np.add(channel_one_median, channel_one_std_dev)
+    channel_one_neg = np.subtract(channel_one_median, channel_one_std_dev)
+    channel_two_pos = np.add(channel_two_median, channel_two_std_dev)
+    channel_two_neg = np.subtract(channel_two_median, channel_two_std_dev)
+    channel_one_neg = np.where(channel_one_neg < 0, 0, channel_one_neg)
+    channel_two_neg = np.where(channel_two_neg < 0, 0, channel_two_neg)
+    time_scale = range(len(channel_one_stats))
+    # We want the lower band, the higher band, and the actual value.
+    plt.fill_between(
+        time_scale[::-1],
+        channel_one_pos[::-1],
+        channel_one_neg,
+        alpha=.5,
+        color='green',
+    )
+    plt.fill_between(
+        time_scale[::-1],
+        channel_two_pos[::-1],
+        channel_two_neg[::-1],
+        alpha=.5,
+        color='red',
+    )
+    plt.plot(time_scale[::-1], channel_one_median[::-1], color='green')  #
+    plt.plot(time_scale[::-1], channel_two_median[::-1], color='red')  #
+    canvas.draw()
+    buf = canvas.buffer_rgba()
+    return buf
+
+
+def plot_cell_count(channel_one_stats, channel_two_stats):
+    fig = plt.figure()
+    canvas = FigureCanvasAgg(fig)
+    plt.title('Cell Count')
+    channel_one_cell_count = [stat[2] for stat in channel_one_stats]
+    channel_two_cell_count = [stat[2] for stat in channel_two_stats]
+    time_scale = range(len(channel_one_stats))
+    # We want the lower band, the higher band, and the actual value.
+    plt.plot(time_scale[::-1], channel_one_cell_count[::-1], color='blue')  #
+    plt.plot(time_scale[::-1], channel_two_cell_count[::-1], color='purple')  #
+    canvas.draw()
+    buf = canvas.buffer_rgba()
+    return buf
+
+
+def plot_histogram(input_frame, axis, plot_name):
+    '''
+
+    Returns:
+
+    '''
+    fig = plt.figure()
+    canvas = FigureCanvasAgg(fig)
+    plt.title(plot_name)
+    hist, bins = np.histogram(input_frame, bins=100)
+    center = (bins[:-1] + bins[1:]) / 2
+    axis.bar(center, hist, align='center', width=100)
+    axis.set_xlim([0, 100])
+    axis.set_ylim([0, 10000000])
+    canvas.draw()
+    buf = canvas.buffer_rgba()
+    return buf
+
+
+def generate_image_canvas(
+        processed_frame: np.ndarray,
+        raw_frame: np.ndarray,
+        stats_list: List,
+        title: str,
+        stats_final_size: int,
+):
+    fig = plt.figure(figsize=(13, 6))
+    canvas = FigureCanvasAgg(fig)
+    grid = plt.GridSpec(7, 6, hspace=0.0, wspace=0.0)
+    # grid.update(wspace=0.2, hspace=0.2)
+    # plt.margins(.5, .5)
+    # plt.title(f'{title}')
+    # Padding the Array to our final point
+    stats_list += [[(0, 0, 0), (0, 0, 0)]] * (stats_final_size - len(stats_list))
+    # for i in range((stats_final_size - len(stats_list))):
+    #     stats_list.append([(0, 0), (0, 0)])
+    # Axis Declarations
+    # axis_1 = fig.add_subplot(grid[:2, :2])
+    # axis_2 = fig.add_subplot(grid[2:5, :1])
+    # axis_3 = fig.add_subplot(grid[2:5, 1:2])
+    # axis_4 = fig.add_subplot(grid[0:3, 3:4])
+    # axis_5 = fig.add_subplot(grid[3:6, 3:4])
+    axis_1 = fig.add_subplot(grid[:6, :5])
+    axis_2 = fig.add_subplot(grid[0:3, 4:6])
+    axis_3 = fig.add_subplot(grid[3:6, 4:6])
+    axis_4 = fig.add_subplot(grid[6:7, 0:3])
+    axis_5 = fig.add_subplot(grid[6:7, 3:6])
+    c1_stats, c2_stats = stat_splitter(stats_list)
+    cell_signal = plot_cellular_signal(c1_stats, c2_stats)
+    cell_count = plot_cell_count(c1_stats, c2_stats)
+    # TODO: Work via Mutation.
+    plot_histogram(raw_frame, axis_4, 'Raw Frame')
+    plot_histogram(processed_frame, axis_5, 'Processed Frame')
+    array_list = [processed_frame, cell_signal, cell_count]
+    axis_list = [axis_1, axis_2, axis_3, axis_4, axis_5]
+    for array, axis in zip(array_list, axis_list):
+        axis.imshow(array, interpolation='nearest')
+        plt.axis('off')
+        axis.set_xticklabels([])
+        axis.set_yticklabels([])
+        axis.set_aspect('equal')
+    plt.tight_layout()
+    canvas.draw()
+    buf = canvas.buffer_rgba()
+    return np.asarray(buf)

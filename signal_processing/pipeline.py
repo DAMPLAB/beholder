@@ -7,9 +7,14 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+import copy
 import datetime
 import multiprocessing as mp
-from typing import Tuple
+import shutil
+from typing import (
+    Optional,
+    Tuple,
+)
 
 import imageio
 import numpy as np
@@ -24,6 +29,41 @@ from signal_processing import (
     graphing,
     stats,
 )
+
+
+def calculate_attic(
+        fp: str,
+        swatch_point_0: Tuple[int, int],
+        swatch_point_1: Tuple[int, int],
+        mask_point_0: Tuple[int, int],
+        mask_point_1: Tuple[int, int],
+):
+    '''
+
+    Args:
+        fp:
+        swatch_point_0:
+        swatch_point_1:
+        mask_point_0:
+        mask_point_1:
+
+    Returns:
+
+    '''
+    reference_frame = sigpro_utility.get_initial_image_nd2(fp)
+    swatch_median = np.median(signal_transform.crop_from_points(
+        reference_frame,
+        swatch_point_0,
+        swatch_point_1,
+    )
+    )
+    mask_median = np.median(signal_transform.crop_from_points(
+        reference_frame,
+        mask_point_0,
+        mask_point_1,
+    )
+    )
+    return abs(swatch_median + mask_median)
 
 
 def preprocess_initial_grey_and_find_contours(initial_frame: np.ndarray):
@@ -75,8 +115,9 @@ def contour_filtration(contours):
     #  via eroding or some other mechanism. I think edge delineation is being
     #  confounded by the lack of depth in the microscopy image and the
     #  microfluidic device it's being housed in.
-    filtered_contours = signal_transform.cellular_highpass_filter(contours)
-    return filtered_contours
+    # filtered_contours = signal_transform.cellular_highpass_filter(contours)
+    # return filtered_contours
+    return contours
 
 
 def generate_mask(input_frame: np.ndarray, contours):
@@ -90,8 +131,22 @@ def generate_mask(input_frame: np.ndarray, contours):
 
 def segmentation_pipeline(
         input_frames: Tuple[np.ndarray, np.ndarray, np.ndarray],
+        current_device_mask_frame: Optional[np.ndarray],
+        sentinel_val: Optional[float],
 ):
     grey_frame, red_frame, green_frame = input_frames
+    raw_frame = copy.copy(grey_frame)
+    if current_device_mask_frame is None:
+        current_device_mask_frame, sentinel_val = \
+            signal_transform.device_highpass_filter(grey_frame)
+    if not signal_transform.mask_recalculation_check(grey_frame, sentinel_val):
+        current_device_mask_frame, sentinel_val = \
+            signal_transform.device_highpass_filter(grey_frame)
+    grey_frame = signal_transform.normalize_subsection(
+        grey_frame,
+        current_device_mask_frame,
+        sentinel_val,
+    )
     c_red_frame = preprocess_color_channel(red_frame, 'red')
     c_green_frame = preprocess_color_channel(green_frame, 'green')
     mask_frame = np.zeros_like(grey_frame)
@@ -141,28 +196,47 @@ def segmentation_pipeline(
         labeled_green,
     )
     mask_frame = generate_mask(mask_frame, contours)
-    return out_frame, frame_stats, mask_frame
+    return out_frame, frame_stats, mask_frame, current_device_mask_frame, sentinel_val, raw_frame
 
 
 if __name__ == '__main__':
     # We need a function that takes an ND2, extracts all of the color channels,
     # and returns tuples of each frame with it's constiuent channels as a big
     # ass list
-    fn = "../data/New_SR_1_5_MC_TS10h.nd2"
+    fn = "../data/raw_nd2/New_SR_1_5_MC_TS10h.nd2"
     frames = sigpro_utility.parse_nd2_file(fn)
+    canvas_list = []
     final_frame = []
     final_stats = []
     final_mask = []
-    for frame in tqdm.tqdm(frames):
-        out_frame, frame_stats, mask_frame = segmentation_pipeline(frame)
+    title = (fn.split('/')[:-1])[:-4]
+    current_device_mask, sentinel_value = None, None
+    # frames = frames[:5]
+    frame_count = len(frames)
+    for index, frame in enumerate(tqdm.tqdm(frames)):
+        out_frame, frame_stats, mask_frame, current_device_mask, sentinel_value, raw_frame = segmentation_pipeline(
+            frame,
+            current_device_mask,
+            sentinel_value,
+        )
         final_frame.append(out_frame)
         final_stats.append(frame_stats)
-    graphing.plot_total(final_stats)
+        canvas_list.append(graphing.generate_image_canvas(
+            out_frame,
+            raw_frame,
+            final_stats,
+            index,
+            frame_count
+        ))
+
+    # graphing.plot_total(final_stats)
     stats.write_stat_record(
         final_stats,
         f'{(fn.split("/")[-1])[:-3]}_{datetime.datetime.now().date()}.csv'
     )
     imageio.mimsave(f'test1.gif', final_frame)
-    imageio.mimsave(f'mask.gif', final_mask)
+    # imageio.mimsave(f'mask.gif', final_mask)
+    shutil.copyfile(f'canvas.gif', 'prior_canvas.gif')
+    imageio.mimsave(f'canvas.gif', canvas_list)
     optimize('test1.gif')
     optimize('mask.gif')

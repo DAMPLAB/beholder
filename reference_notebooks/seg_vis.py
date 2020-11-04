@@ -1,4 +1,17 @@
+'''
+--------------------------------------------------------------------------------
+Description:
+
+Roadmap:
+
+Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
+--------------------------------------------------------------------------------
+'''
 import copy
+from typing import (
+    Tuple,
+)
+
 import numpy as np
 from signal_processing import (
     signal_transform,
@@ -6,6 +19,42 @@ from signal_processing import (
     graphing,
     stats,
 )
+
+
+def calculate_attic(
+        fp: str,
+        swatch_point_0: Tuple[int, int],
+        swatch_point_1: Tuple[int, int],
+        mask_point_0: Tuple[int, int],
+        mask_point_1: Tuple[int, int],
+):
+    '''
+
+    Args:
+        fp:
+        swatch_point_0:
+        swatch_point_1:
+        mask_point_0:
+        mask_point_1:
+
+    Returns:
+
+    '''
+    reference_frame = sigpro_utility.get_initial_image_nd2(fp)
+    swatch_median = np.median(signal_transform.crop_from_points(
+        reference_frame,
+        swatch_point_0,
+        swatch_point_1,
+    )
+    )
+    mask_median = np.median(signal_transform.crop_from_points(
+        reference_frame,
+        mask_point_0,
+        mask_point_1,
+    )
+    )
+    return abs(swatch_median + mask_median)
+
 
 
 def preprocess_initial_grey_and_find_contours(initial_frame: np.ndarray):
@@ -60,6 +109,7 @@ def contour_filtration(contours):
     filtered_contours = signal_transform.cellular_highpass_filter(contours)
     return filtered_contours
 
+
 def generate_contours(input_frame: np.ndarray, contours):
     out_frame = graphing.draw_contours(
         input_frame,
@@ -77,9 +127,20 @@ def generate_mask(input_frame: np.ndarray, contours):
     return out_frame
 
 
-def segmentation_pipeline(input_fn: str):
+def segmentation_pipeline(
+        input_fn: str,
+        mask_p0: Tuple[int, int],
+        mask_p1: Tuple[int, int],
+        normalized_mask: int,
+):
     grey_frame, red_frame, green_frame = sigpro_utility.open_microscopy_image(
         input_fn
+    )
+    grey_frame = signal_transform.mask_subselection(
+        grey_frame,
+        mask_p0,
+        mask_p1,
+        normalized_mask,
     )
     prepro_frame = copy.copy(grey_frame)
     c_red_frame = preprocess_color_channel(red_frame, 'red')
@@ -135,6 +196,21 @@ def segmentation_pipeline(input_fn: str):
 
 
 if __name__ == '__main__':
+    swatch_point_1 = (657, 209)
+    swatch_point_2 = (817, 696)
+    mask_point_1 = (967, 0)
+    mask_point_2 = (1288, 1039)
     input_file = "../data/agarose_pads/SR15_1mM_IPTG_Agarose_TS_1h_1.nd2"
-    segmentation_pipeline(input_file)
-
+    normalize_value = calculate_attic(
+        input_file,
+        swatch_point_1,
+        swatch_point_2,
+        mask_point_1,
+        mask_point_2,
+    )
+    segmentation_pipeline(
+        input_file,
+        mask_point_1,
+        mask_point_2,
+        normalize_value,
+    )

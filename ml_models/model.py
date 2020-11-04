@@ -281,7 +281,13 @@ def unet_chambers(input_size=(512, 512, 1)):
 
     '''
 
-    model = unet(input_size=input_size, final_activation='sigmoid', output_classes=1)
-    model.compile(optimizer=Adam(lr=1e-4), loss='binary_crossentropy')
-
+    model = unet(
+        input_size=input_size,
+        final_activation='sigmoid',
+        output_classes=1,
+    )
+    model.compile(
+        optimizer=Adam(lr=1e-4),
+        loss='binary_crossentropy',
+    )
     return model
