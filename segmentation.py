@@ -14,10 +14,14 @@ import multiprocessing as mp
 import os
 import shutil
 from typing import (
+    List,
     Optional,
     Tuple,
 )
 import warnings
+from functools import partial
+from itertools import repeat
+from multiprocessing import Pool, freeze_support
 
 import imageio
 import numpy as np
@@ -35,6 +39,8 @@ from signal_processing import (
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore")
+
+PROCESSES = mp.cpu_count() - 1
 
 
 def calculate_attic(
@@ -137,22 +143,20 @@ def generate_mask(input_frame: np.ndarray, contours):
 
 def segmentation_pipeline(
         input_frames: Tuple[np.ndarray, np.ndarray, np.ndarray],
-        current_device_mask_frame: Optional[np.ndarray],
-        sentinel_val: Optional[float],
 ):
     grey_frame, red_frame, green_frame = input_frames
     raw_frame = copy.copy(grey_frame)
-    if current_device_mask_frame is None:
-        current_device_mask_frame, sentinel_val = \
-            signal_transform.device_highpass_filter(grey_frame)
-    if not signal_transform.mask_recalculation_check(grey_frame, sentinel_val):
-        current_device_mask_frame, sentinel_val = \
-            signal_transform.device_highpass_filter(grey_frame)
-    grey_frame = signal_transform.normalize_subsection(
-        grey_frame,
-        current_device_mask_frame,
-        sentinel_val,
-    )
+    # if current_device_mask_frame is None:
+    #     current_device_mask_frame, sentinel_val = \
+    #         signal_transform.device_highpass_filter(grey_frame)
+    # if not signal_transform.mask_recalculation_check(grey_frame, sentinel_val):
+    #     current_device_mask_frame, sentinel_val = \
+    #         signal_transform.device_highpass_filter(grey_frame)
+    # grey_frame = signal_transform.normalize_subsection(
+    #     grey_frame,
+    #     current_device_mask_frame,
+    #     sentinel_val,
+    # )
     c_red_frame = preprocess_color_channel(red_frame, 'red')
     c_green_frame = preprocess_color_channel(green_frame, 'green')
     mask_frame = np.zeros_like(grey_frame)
@@ -202,13 +206,62 @@ def segmentation_pipeline(
         labeled_green,
     )
     mask_frame = generate_mask(mask_frame, contours)
-    return out_frame, frame_stats, mask_frame, current_device_mask_frame, sentinel_val, raw_frame
+    return out_frame, frame_stats, mask_frame, raw_frame
+
+
+def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
+    canvas_list = []
+    final_frame = []
+    final_stats = []
+    # TODO: ENSURE OUTPUT ORDER OF MULTIPROCESSING
+    frame_count = len(input_frames)
+    import time
+    start = time.time()
+    with Pool(PROCESSES) as p:
+        results = list(tqdm.tqdm(p.imap(segmentation_pipeline, input_frames), total=len(input_frames)))
+    # Final Frame, stats, mask, and Raw
+    print('Finished Segmentation Pipeline! Parsing Results..')
+    stop = time.time() - start
+    print(f'Total Time: {stop}'
+          f'Approx. Time per frame = {stop/len(input_frames)}'
+          )
+    for index, result in enumerate(tqdm.tqdm(results)):
+        out_frame, frame_stats, mask_frame, raw_frame = result
+        # canvas_list.append(out_frame)
+        final_frame.append(out_frame)
+        final_stats.append(frame_stats)
+        canvas_list.append(graphing.generate_image_canvas(
+            out_frame,
+            signal_transform.downsample_image(raw_frame),
+            final_stats,
+            f'output/{title}- Frame: {index}',
+            frame_count
+        ))
+    print('Result Parsing Finished! Saving to disk, this might take a second...')
+    stats.write_stat_record(
+        final_stats,
+        f'{title}_{datetime.datetime.now().date()}.csv'
+    )
+    file_counter = 0
+    iter = sigpro_utility.list_chunking(canvas_list, 10)
+    while True:
+        res = next(iter, None)
+        if res is None:
+            break
+        out_structure = f'output/{title}_f{file_counter}.gif'
+        if os.path.exists(out_structure):
+            shutil.copyfile(
+                out_structure,
+                f'output/{title}_f{file_counter}_prior.gif',
+            )
+        imageio.mimsave(out_structure, res)
+        file_counter += 1
 
 
 @click.command()
 @click.option(
     '--fn',
-    default="data/raw_nd2/1-SR_1_5_6hPre-C_2h_1mMIPTG_OFF_1hmMIPTG_ON_22hM9_TS_MC1.nd2",
+    default="data/raw_nd2/New_SR_1_5_MC_TS10h.nd2",
     prompt='Filepath to Input ND2 files.'
 )
 @click.option(
@@ -222,40 +275,10 @@ def segmentation_ingress(fn: str, subselection: int):
     print(f'Loading {title}... (This may take a second)')
     frames = sigpro_utility.parse_nd2_file(fn)
     print(f'Loading Complete!')
-    canvas_list = []
-    final_frame = []
-    final_stats = []
-    current_device_mask, sentinel_value = None, None
     if subselection:
         frames = frames[:subselection]
-    frame_count = len(frames)
     print(f'Starting Segmentation Pipeline..')
-    for index, frame in enumerate(tqdm.tqdm(frames)):
-        # TODO: Too many outputs.
-        out_frame, frame_stats, mask_frame, current_device_mask, sentinel_value, raw_frame = segmentation_pipeline(
-            frame,
-            current_device_mask,
-            sentinel_value,
-        )
-        final_frame.append(out_frame)
-        final_stats.append(frame_stats)
-        canvas_list.append(graphing.generate_image_canvas(
-            out_frame,
-            signal_transform.downsample_image(raw_frame),
-            final_stats,
-            f'{title}- Frame: {index}',
-            frame_count
-        ))
-
-    # graphing.plot_total(final_stats)
-    stats.write_stat_record(
-        final_stats,
-        f'{(fn.split("/")[-1])[:-3]}_{datetime.datetime.now().date()}.csv'
-    )
-    out_structure = f'output/{title}.gif'
-    if os.path.exists(out_structure):
-        shutil.copyfile(out_structure, f'output/{title}_prior.gif')
-    imageio.mimsave(out_structure, canvas_list)
+    enqueue_segmentation_pipeline(frames, title)
 
 
 if __name__ == '__main__':
