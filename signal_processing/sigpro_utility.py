@@ -41,9 +41,16 @@ def empty_frame_check(input_frame: np.ndarray) -> bool:
         return True
     return False
 
+
 def get_channel_names(fp: str):
     with nd2reader.ND2Reader(fp) as input_frames:
         return input_frames.metadata['channels']
+
+
+def get_fov(fp: str):
+    with nd2reader.ND2Reader(fp) as input_frames:
+        return len(list(input_frames.metadata['fields_of_view']))
+
 
 def parse_nd2_file(fn: str):
     out_list = []
@@ -169,3 +176,8 @@ def display_frame(
         # elif k == ord('s'):  # wait for 's' key to save and exit
         #     cv2.imwrite(f'{image_label}_{datetime.date}.png', input_frame)
         #     cv2.destroyAllWindows()
+
+
+def sublist_splitter(primary_list, max_count, divisor):
+    for i in range(0, max_count, divisor):
+        yield primary_list[i:i + divisor]

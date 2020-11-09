@@ -102,4 +102,4 @@ def extract_and_resize_frames(path, resize_to=None):
     return all_frames
 
 if __name__ == '__main__':
-    resize_gif('canvas.gif')
+    resize_gif('WithoutFilterRemoval.gif')

@@ -208,7 +208,7 @@ def segmentation_pipeline(
 @click.command()
 @click.option(
     '--fn',
-    default="data/raw_nd2/New_SR_1_5_MC_TS10h.nd2",
+    default="data/raw_nd2/1-SR_1_5_6hPre-C_2h_1mMIPTG_OFF_1hmMIPTG_ON_22hM9_TS_MC1.nd2",
     prompt='Filepath to Input ND2 files.'
 )
 @click.option(
