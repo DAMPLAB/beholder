@@ -201,7 +201,6 @@ def resize_gif(path, save_as=None, resize_to=None):
         save_as = path
 
     if len(all_frames) == 1:
-        print("Warning: only 1 frame found")
         all_frames[0].save(save_as, optimize=True)
     else:
         all_frames[0].save(save_as, optimize=True, save_all=True, append_images=all_frames[1:], loop=1000)

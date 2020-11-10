@@ -7,6 +7,7 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+from collections import deque
 import click
 import copy
 import datetime
@@ -20,7 +21,7 @@ from typing import (
 )
 import warnings
 from functools import partial
-from itertools import repeat
+from itertools import repeat, islice
 from multiprocessing import Pool, freeze_support
 
 import imageio
@@ -29,7 +30,7 @@ import tqdm
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from signal_processing import (
+from server.signal_processing import (
     signal_transform,
     sigpro_utility,
     graphing,
@@ -208,13 +209,39 @@ def segmentation_pipeline(
     mask_frame = generate_mask(mask_frame, contours)
     return out_frame, frame_stats, mask_frame, raw_frame
 
+    # TODO: This is untenable for a live mode, so we're going to have to make
+    # some duplicated code at some point
+
+
+def iter_create_canvas(result):
+    out_frame, frame_stats, mask_frame, raw_frame, final_stats, title, index = result
+    return graphing.generate_image_canvas(
+        out_frame,
+        signal_transform.downsample_image(raw_frame),
+        final_stats,
+        f'{title}- Frame: {index}',
+    )
+
+
+def write_out(entry):
+    frame, title, index = entry
+    out_structure = f'output/{title}_f{index}.gif'
+    # if os.path.exists(out_structure):
+    #     shutil.copyfile(
+    #         out_structure,
+    #         f'output/{title}_f{index}_prior.gif',
+    #     )
+    imageio.imwrite(out_structure, frame)
+    return out_structure
+
 
 def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
     canvas_list = []
     final_frame = []
-    final_stats = []
-    # TODO: ENSURE OUTPUT ORDER OF MULTIPROCESSING
     frame_count = len(input_frames)
+    empty_stats = [[(0, 0, 0), (0, 0, 0)]] * frame_count
+    final_stats = deque(empty_stats, maxlen=frame_count)
+    # TODO: ENSURE OUTPUT ORDER OF MULTIPROCESSING
     import time
     start = time.time()
     with Pool(PROCESSES) as p:
@@ -223,39 +250,75 @@ def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
     print('Finished Segmentation Pipeline! Parsing Results..')
     stop = time.time() - start
     print(f'Total Time: {stop}'
-          f'Approx. Time per frame = {stop/len(input_frames)}'
+          f'Approx. Time per frame = {stop / len(input_frames)}'
           )
     for index, result in enumerate(tqdm.tqdm(results)):
         out_frame, frame_stats, mask_frame, raw_frame = result
         # canvas_list.append(out_frame)
         final_frame.append(out_frame)
         final_stats.append(frame_stats)
-        canvas_list.append(graphing.generate_image_canvas(
-            out_frame,
-            signal_transform.downsample_image(raw_frame),
-            final_stats,
-            f'output/{title}- Frame: {index}',
-            frame_count
-        ))
+    appended_results = []
+    for index, result in enumerate(tqdm.tqdm(results)):
+        result = list(result)
+        point_in_time = list(islice(final_stats, 0, index))
+        historical_point = copy.copy(point_in_time)
+        delta = len(final_stats) - index
+        historical_point += [[(0, 0, 0), (0, 0, 0)]] * delta
+        result.append(historical_point)
+        result.append(title)
+        result.append(index)
+        appended_results.append(result)
+    with Pool(PROCESSES) as p:
+        c_results = list(tqdm.tqdm(p.imap(iter_create_canvas, appended_results), total=len(input_frames)))
+    # for canvas_list.append(graphing.generate_image_canvas(
+    #         out_frame,
+    #         signal_transform.downsample_image(raw_frame),
+    #         final_stats,
+    #         f'output/{title}- Frame: {index}',
+    #         frame_count
+    #     ))
+    # sigpro_utility.display_frame(c_results[0])
     print('Result Parsing Finished! Saving to disk, this might take a second...')
     stats.write_stat_record(
         final_stats,
-        f'{title}_{datetime.datetime.now().date()}.csv'
+        f'output/{title}_{datetime.datetime.now().date()}.csv'
     )
-    file_counter = 0
-    iter = sigpro_utility.list_chunking(canvas_list, 10)
-    while True:
-        res = next(iter, None)
-        if res is None:
-            break
-        out_structure = f'output/{title}_f{file_counter}.gif'
-        if os.path.exists(out_structure):
-            shutil.copyfile(
-                out_structure,
-                f'output/{title}_f{file_counter}_prior.gif',
-            )
-        imageio.mimsave(out_structure, res)
-        file_counter += 1
+    write_list = []
+    for index, res in enumerate(c_results):
+        write_list.append([res, title, index])
+    # iter = list(sigpro_utility.list_chunking(canvas_list, 20))
+    # file_list = []
+    # TODO: I need to balance moving things out of memory in the main python
+    #  function with the speed loss of hitting the disk for every file.
+    with Pool(PROCESSES) as p:
+        file_handles = list(
+            tqdm.tqdm(
+                p.imap(
+                    write_out,
+                    write_list,
+                ), total=len(input_frames)))
+    # while True:
+    #     res = next(iter, None)
+    #     if res is None:
+    #         break
+    #     out_structure = f'output/{title}_f{file_counter}.gif'
+    #     if os.path.exists(out_structure):
+    #         shutil.copyfile(
+    #             out_structure,
+    #             f'output/{title}_f{file_counter}_prior.gif',
+    #         )
+    #     imageio.mimsave(out_structure, res)
+    #     file_list.append(out_structure)
+    #     file_counter += 1
+    # Compression
+    # for file in file_handles:
+    #     sigpro_utility.resize_gif(file)
+    # # Stick em together
+    final_output = []
+    for file in file_handles:
+        final_output.append(imageio.imread(file))
+        os.remove(file)
+    imageio.mimsave(f'output/{title}.gif', final_output)
 
 
 @click.command()

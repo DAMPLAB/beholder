@@ -21,7 +21,7 @@ import cv2
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.figure as m_figure
-from signal_processing.stats import CellSignal
+from server.signal_processing.stats import CellSignal
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
@@ -322,21 +322,21 @@ def plot_cellular_signal(channel_one_stats, channel_two_stats):
     time_scale = range(len(channel_one_stats))
     # We want the lower band, the higher band, and the actual value.
     plt.fill_between(
-        time_scale[::-1],
-        channel_one_pos[::-1],
+        time_scale,
+        channel_one_pos,
         channel_one_neg,
         alpha=.5,
         color='green',
     )
     plt.fill_between(
-        time_scale[::-1],
-        channel_two_pos[::-1],
-        channel_two_neg[::-1],
+        time_scale,
+        channel_two_pos,
+        channel_two_neg,
         alpha=.5,
         color='red',
     )
-    plt.plot(time_scale[::-1], channel_one_median[::-1], color='green')  #
-    plt.plot(time_scale[::-1], channel_two_median[::-1], color='red')  #
+    plt.plot(time_scale, channel_one_median, color='green')  #
+    plt.plot(time_scale, channel_two_median, color='red')  #
     canvas.draw()
     buf = canvas.buffer_rgba()
     return buf
@@ -350,8 +350,8 @@ def plot_cell_count(channel_one_stats, channel_two_stats):
     channel_two_cell_count = [stat[2] for stat in channel_two_stats]
     time_scale = range(len(channel_one_stats))
     # We want the lower band, the higher band, and the actual value.
-    plt.plot(time_scale[::-1], channel_one_cell_count[::-1], color='red')  #
-    plt.plot(time_scale[::-1], channel_two_cell_count[::-1], color='green')  #
+    plt.plot(time_scale, channel_one_cell_count, color='red')  #
+    plt.plot(time_scale, channel_two_cell_count, color='green')  #
     canvas.draw()
     buf = canvas.buffer_rgba()
     return buf
@@ -385,14 +385,13 @@ def generate_image_canvas(
         raw_frame: np.ndarray,
         stats_list: List,
         title: str,
-        stats_final_size: int,
 ):
     fig = plt.figure(figsize=(13, 6))
     canvas = FigureCanvasAgg(fig)
     grid = plt.GridSpec(7, 6, hspace=0.0, wspace=0.0)
     plt.title(f'{title}')
     # Padding the Array to our final point
-    stats_list += [[(0, 0, 0), (0, 0, 0)]] * (stats_final_size - len(stats_list))
+    # stats_list += [[(0, 0, 0), (0, 0, 0)]] * (stats_final_size - len(stats_list))
     axis_1 = fig.add_subplot(grid[:6, :5])
     axis_2 = fig.add_subplot(grid[0:3, 4:6])
     axis_3 = fig.add_subplot(grid[3:6, 4:6])
