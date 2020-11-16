@@ -92,20 +92,49 @@ def ingress_tiffs(list_of_tiff_files):
 
 
 def test_iter_axes_options(fn: str):
-    out_list = []
-    print('roi')
-    # with nd2reader.ND2Reader(fn) as input_frames:
-    #     input_frames.bundle_axes = 'vxy'
-    #     input_frames.iter_axes = 'tc'
-    #     for i in range(input_frames.sizes['v']):
-    #         fov_list = []
-    #         fov = input_frames[i]
-    #         for start_idx in range(len(fov)):
-    #             frame = fov[start_idx]
-    #             fov_list.append(frame)
-    #         out_list.append(fov_list)
-    #     return out_list
-
+    channels = get_channel_names(fn)
+    base_filename = (fn.split("/")[-1])[:-4]
+    # Should have either the ability to quanitfy the amount of memory that this
+    # will require or pass some sort of flag from a higher context which will
+    # define disk based file behavior.
+    dir_path = f'data/raw_tiffs/{base_filename}'
+    if not os.path.exists(dir_path):
+        os.mkdir(dir_path)
+    with nd2reader.ND2Reader(fn) as input_frames:
+        input_frames.iter_axes = 'vtc'
+        view_number = input_frames.sizes['v']
+        time_scale = input_frames.sizes['t']
+        num_channels = input_frames.sizes['c']
+        outer_list = []
+        for i in range(view_number):
+            frame_offset = i * time_scale
+            inner_list = []
+            for j in range(0, time_scale*num_channels, num_channels):
+                access_index = frame_offset + j
+                grey_frame = input_frames[access_index]
+                ch1_frame = input_frames[access_index + 1]
+                ch2_frame = input_frames[access_index + 2]
+                if any(
+                        map(
+                            empty_frame_check,
+                            [grey_frame, ch1_frame, ch2_frame]
+                        )
+                ):
+                    continue
+                else:
+                    write_list = []
+                    for k, w_frame in zip(range(3), [grey_frame, ch1_frame, ch2_frame]):
+                        fn = f'data/raw_tiffs/{base_filename}/{channels[k]}_{access_index+k}.tiff'
+                        if not os.path.exists(fn):
+                            tiffile.imsave(fn, w_frame)
+                        write_list.append(fn)
+                    inner_list.append(write_list)
+            # TODO: Figure out source of spurious empty frames.
+            if len(inner_list) > 10:
+                outer_list.append(inner_list)
+            else:
+                continue
+        return outer_list
 
 def parse_nd2_file(fn: str):
     out_list = []
@@ -124,6 +153,7 @@ def parse_nd2_file(fn: str):
                 ):
                     continue
                 else:
+
                     out_list.append((grey_frame, ch1_frame, ch2_frame))
     # Try/except logic to spackle over some of the weird indexing issues
     # that seem to occur for three dimensional images vice two dimensional

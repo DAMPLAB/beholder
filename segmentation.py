@@ -236,8 +236,8 @@ def write_out(entry):
 
 
 def test_timing_based_seperation(master_frame_list, title):
-    # for chunk in master_frame_list:
-    for experiment_num, input_frames in enumerate(master_frame_list):
+    for experiment_num, file_locs in enumerate(master_frame_list):
+        input_frames = sigpro_utility.ingress_tiffs(file_locs)
         final_frame = []
         frame_count = len(input_frames)
         empty_stats = [[(0, 0, 0), (0, 0, 0)]] * frame_count
@@ -246,7 +246,14 @@ def test_timing_based_seperation(master_frame_list, title):
         start = time.time()
         # segmentation_pipeline(input_frames)
         with Pool(PROCESSES) as p:
-            results = list(tqdm.tqdm(p.imap(segmentation_pipeline, input_frames), total=len(input_frames)))
+            results = list(
+                tqdm.tqdm(
+                    p.imap(segmentation_pipeline, input_frames),
+                    total=len(input_frames),
+                    desc='Running Segmentation Pipeline...')
+            )
+            p.close()
+            p.join()
         # Final Frame, stats, mask, and Raw
         print('Finished Segmentation Pipeline! Parsing Results..')
         # stop = time.time() - start
@@ -271,6 +278,8 @@ def test_timing_based_seperation(master_frame_list, title):
             appended_results.append(result)
         with Pool(PROCESSES) as p:
             c_results = list(tqdm.tqdm(p.imap(iter_create_canvas, appended_results), total=len(input_frames)))
+            p.close()
+            p.join()
         # for canvas_list.append(graphing.generate_image_canvas(
         #         out_frame,
         #         signal_transform.downsample_image(raw_frame),
@@ -297,7 +306,9 @@ def test_timing_based_seperation(master_frame_list, title):
                     p.imap(
                         write_out,
                         write_list,
-                    ), total=len(input_frames)))
+                    ), total=len(input_frames), desc="Writing out File..."))
+            p.close()
+            p.join()
         # while True:
         #     res = next(iter, None)
         #     if res is None:
@@ -323,22 +334,14 @@ def test_timing_based_seperation(master_frame_list, title):
 
 
 def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
-    canvas_list = []
+    input_frames = sigpro_utility.ingress_tiffs(input_frames)
     final_frame = []
     frame_count = len(input_frames)
     empty_stats = [[(0, 0, 0), (0, 0, 0)]] * frame_count
     final_stats = deque(empty_stats, maxlen=frame_count)
-    # TODO: ENSURE OUTPUT ORDER OF MULTIPROCESSING
-    import time
-    start = time.time()
-    with Pool(PROCESSES) as p:
-        results = list(tqdm.tqdm(p.imap(segmentation_pipeline, input_frames), total=len(input_frames)))
+    results = list(tqdm.tqdm(map(segmentation_pipeline, input_frames), total=len(input_frames)))
     # Final Frame, stats, mask, and Raw
     print('Finished Segmentation Pipeline! Parsing Results..')
-    stop = time.time() - start
-    print(f'Total Time: {stop}'
-          f'Approx. Time per frame = {stop / len(input_frames)}'
-          )
     for index, result in enumerate(tqdm.tqdm(results)):
         out_frame, frame_stats, mask_frame, raw_frame = result
         # canvas_list.append(out_frame)
@@ -355,16 +358,7 @@ def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
         result.append(title)
         result.append(index)
         appended_results.append(result)
-    with Pool(PROCESSES) as p:
-        c_results = list(tqdm.tqdm(p.imap(iter_create_canvas, appended_results), total=len(input_frames)))
-    # for canvas_list.append(graphing.generate_image_canvas(
-    #         out_frame,
-    #         signal_transform.downsample_image(raw_frame),
-    #         final_stats,
-    #         f'output/{title}- Frame: {index}',
-    #         frame_count
-    #     ))
-    # sigpro_utility.display_frame(c_results[0])
+    c_results = list(tqdm.tqdm(map(iter_create_canvas, appended_results), total=len(input_frames)))
     print('Result Parsing Finished! Saving to disk, this might take a second...')
     stats.write_stat_record(
         final_stats,
@@ -377,30 +371,12 @@ def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
     # file_list = []
     # TODO: I need to balance moving things out of memory in the main python
     #  function with the speed loss of hitting the disk for every file.
-    with Pool(PROCESSES) as p:
-        file_handles = list(
-            tqdm.tqdm(
-                p.imap(
-                    write_out,
-                    write_list,
-                ), total=len(input_frames)))
-    # while True:
-    #     res = next(iter, None)
-    #     if res is None:
-    #         break
-    #     out_structure = f'output/{title}_f{file_counter}.gif'
-    #     if os.path.exists(out_structure):
-    #         shutil.copyfile(
-    #             out_structure,
-    #             f'output/{title}_f{file_counter}_prior.gif',
-    #         )
-    #     imageio.mimsave(out_structure, res)
-    #     file_list.append(out_structure)
-    #     file_counter += 1
-    # Compression
-    # for file in file_handles:
-    #     sigpro_utility.resize_gif(file)
-    # # Stick em together
+    file_handles = list(
+        tqdm.tqdm(
+            map(
+                write_out,
+                write_list,
+            ), total=len(input_frames)))
     final_output = []
     for file in file_handles:
         final_output.append(imageio.imread(file))
@@ -423,15 +399,15 @@ def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
 def segmentation_ingress(fn: str, subselection: int):
     title = (fn.split('/')[-1])[:-4]
     print(f'Loading {title}... (This may take a second)')
-    sigpro_utility.tiff_splitter(fn)
-    # frames = sigpro_utility.test_iter_axes_options(fn)
-    frames = sigpro_utility.glob_tiffs(f'data/raw_tiffs/{title}', 100)
-    frames = sigpro_utility.ingress_tiffs(frames)
+    frames = sigpro_utility.test_iter_axes_options(fn)
+    # frames = sigpro_utility.ingress_tiffs(frames)
     print(f'Loading Complete!')
     if subselection:
         frames = frames[:subselection]
     print(f'Starting Segmentation Pipeline..')
-    test_timing_based_seperation(frames, title)
+    for f_index, frame in enumerate(frames):
+        enqueue_segmentation_pipeline(frame, f'{title}_{f_index}')
+
 
 
 if __name__ == '__main__':
