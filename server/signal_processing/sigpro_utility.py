@@ -8,6 +8,9 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
 import datetime
+import glob
+import math
+import os
 import struct
 
 import cv2
@@ -16,6 +19,9 @@ import numpy as np
 import nd2reader
 from pims import ND2_Reader as nd2_sdk
 from PIL import Image
+import tqdm
+import tiffile
+
 
 # --------------------------- Utility Functionality ----------------------------
 def empty_frame_check(input_frame: np.ndarray) -> bool:
@@ -51,9 +57,55 @@ def get_fov(fp: str):
     with nd2reader.ND2Reader(fp) as input_frames:
         return len(list(input_frames.metadata['fields_of_view']))
 
+
 def list_chunking(input_list, chunk_size):
     for i in range(0, len(input_list), chunk_size):
         yield input_list[i:i + chunk_size]
+
+
+def glob_tiffs(fp: str, chunk_size: int, channel_num: int = 3):
+    '''
+
+    Args:
+        fp:
+        chunk_size
+
+    Returns:
+
+    '''
+    tiffs = glob.glob(f'{fp}/*.tiff')
+    tiffs = sorted(tiffs, key=lambda x: int(((x.split('/')[-1]).split('_')[-1])[:-5]))
+    master_list = []
+    for i in range(0, len(tiffs), channel_num * chunk_size):
+        chunk_list = []
+        for j in range(i, i + chunk_size):
+            chunk_list.append(tiffs[j])
+        master_list.append(chunk_list)
+    return master_list
+
+
+def ingress_tiffs(list_of_tiff_files):
+    out_array = []
+    for file in list_of_tiff_files:
+        out_array.append(np.array(tiffile.imread(file)).astype('uint16'))
+    return out_array
+
+
+def test_iter_axes_options(fn: str):
+    out_list = []
+    print('roi')
+    # with nd2reader.ND2Reader(fn) as input_frames:
+    #     input_frames.bundle_axes = 'vxy'
+    #     input_frames.iter_axes = 'tc'
+    #     for i in range(input_frames.sizes['v']):
+    #         fov_list = []
+    #         fov = input_frames[i]
+    #         for start_idx in range(len(fov)):
+    #             frame = fov[start_idx]
+    #             fov_list.append(frame)
+    #         out_list.append(fov_list)
+    #     return out_list
+
 
 def parse_nd2_file(fn: str):
     out_list = []
@@ -73,6 +125,114 @@ def parse_nd2_file(fn: str):
                     continue
                 else:
                     out_list.append((grey_frame, ch1_frame, ch2_frame))
+    # Try/except logic to spackle over some of the weird indexing issues
+    # that seem to occur for three dimensional images vice two dimensional
+    except KeyError:
+        with nd2_sdk(fn) as input_frames:
+            input_frames.iter_axes = 'mtc'
+            for start_idx in range(0, len(input_frames), 3):
+                grey_frame = input_frames[start_idx]
+                ch1_frame = input_frames[start_idx + 1]
+                ch2_frame = input_frames[start_idx + 2]
+                if any(
+                        map(
+                            empty_frame_check,
+                            [grey_frame, ch1_frame, ch2_frame]
+                        )
+                ):
+                    continue
+                else:
+                    out_list.append((grey_frame, ch1_frame, ch2_frame))
+    return out_list
+
+
+def generate_iter_frames(fn: str):
+    '''
+
+    Args:
+        fn:
+
+    Returns:
+
+    '''
+    out_list = []
+    try:
+        with nd2reader.ND2Reader(fn) as input_frames:
+            input_frames.bundle_axes = 'xyv'
+            input_frames.iter_axes = 'tc'
+            for xy_pos in range(input_frames.sizes['v']):
+                pass
+            for start_idx in range(0, len(input_frames), 3):
+                grey_frame = input_frames[start_idx]
+                ch1_frame = input_frames[start_idx + 1]
+                ch2_frame = input_frames[start_idx + 2]
+                if any(
+                        map(
+                            empty_frame_check,
+                            [grey_frame, ch1_frame, ch2_frame]
+                        )
+                ):
+                    continue
+                else:
+                    out_list.append((grey_frame, ch1_frame, ch2_frame))
+    # Try/except logic to spackle over some of the weird indexing issues
+    # that seem to occur for three dimensional images vice two dimensional
+    except KeyError:
+        with nd2_sdk(fn) as input_frames:
+            input_frames.iter_axes = 'mtc'
+            for start_idx in range(0, len(input_frames), 3):
+                grey_frame = input_frames[start_idx]
+                ch1_frame = input_frames[start_idx + 1]
+                ch2_frame = input_frames[start_idx + 2]
+                if any(
+                        map(
+                            empty_frame_check,
+                            [grey_frame, ch1_frame, ch2_frame]
+                        )
+                ):
+                    continue
+                else:
+                    out_list.append((grey_frame, ch1_frame, ch2_frame))
+    return out_list
+
+
+def generate_frame_timing_groupings(fn: str):
+    out_list = []
+    try:
+        with nd2reader.ND2Reader(fn) as input_frames:
+            input_frames.bundle_axes = 'xyv'
+            input_frames.iter_axes = 'tc'
+            loop_data = input_frames.metadata['experiment']['loops']
+            frame_spread = []
+            current_count = 0
+            c_dim = input_frames.sizes['c']
+            v_dim = input_frames.sizes['v']
+            factor = c_dim * v_dim
+            for loop in loop_data:
+                durr = loop['duration']
+                samp_i = loop['sampling_interval']
+                frame_length = math.floor(durr / samp_i) * factor
+                prior_frame = current_count
+                current_count += frame_length
+                frame_spread.append([prior_frame, current_count])
+            for frame_slices in frame_spread:
+                start, stop = frame_slices
+                internal_frames = input_frames[start: stop]
+                internal_list = []
+                for start_idx in range(0, len(internal_frames), 3):
+                    grey_frame = input_frames[start_idx]
+                    ch1_frame = input_frames[start_idx + 1]
+                    ch2_frame = input_frames[start_idx + 2]
+                    if any(
+                            map(
+                                empty_frame_check,
+                                [grey_frame, ch1_frame, ch2_frame]
+                            )
+                    ):
+                        continue
+                    else:
+                        internal_list.append((grey_frame, ch1_frame, ch2_frame))
+                out_list.append(internal_list)
     # Try/except logic to spackle over some of the weird indexing issues
     # that seem to occur for three dimensional images vice two dimensional
     except KeyError:
@@ -185,6 +345,7 @@ def sublist_splitter(primary_list, max_count, divisor):
     for i in range(0, max_count, divisor):
         yield primary_list[i:i + divisor]
 
+
 def resize_gif(path, save_as=None, resize_to=None):
     """
     Resizes the GIF to a given length:
@@ -284,6 +445,21 @@ def extract_and_resize_frames(path, resize_to=None):
         pass
 
     return all_frames
+
+
+def tiff_splitter(fp: str):
+    frames = parse_nd2_file(fp)
+    channels = get_channel_names(fp)
+    base_filename = (fp.split("/")[-1])[:-4]
+    # Creating a Tiff File for each channel.
+    for i, frame in enumerate(tqdm.tqdm(frames)):
+        dir_path = f'data/raw_tiffs/{base_filename}'
+        if not os.path.exists(dir_path):
+            os.mkdir(dir_path)
+        for j, inner_frame in enumerate(frame):
+            fn = f'data/raw_tiffs/{base_filename}/{channels[j]}_{i}.tiff'
+            tiffile.imsave(fn, frame)
+
 
 if __name__ == '__main__':
     resize_gif('WithoutFilterRemoval.gif')

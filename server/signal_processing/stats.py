@@ -115,7 +115,6 @@ def write_stat_record(
     # TODO: Sloppy, time crunch.
     df = pd.DataFrame.from_dict(dt)
     df.to_csv(record_name)
-    print(os.getcwd())
     # try:
     #     with open(record_name, 'w') as csvfile:
     #         writer = csv.DictWriter(csvfile, fieldnames=list(dt.keys()))
