@@ -27,6 +27,7 @@ pygifsicle = "^1.0.1"
 dvc = {extras = ["s3"], version = "^1.9.1"}
 websockets = "^8.1"
 fastapi = "^0.61.2"
+seaborn = "^0.11.0"
 
 
 [tool.poetry.dev-dependencies]
