@@ -30,7 +30,7 @@ import tqdm
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from server.signal_processing import (
+from backend.signal_processing import (
     signal_transform,
     sigpro_utility,
     graphing,
@@ -289,6 +289,9 @@ def test_timing_based_seperation(master_frame_list, title):
         #     ))
         # sigpro_utility.display_frame(c_results[0])
         print('Result Parsing Finished! Saving to disk, this might take a second...')
+        print(
+            f'Statistical information generated and persited to disk at '
+              f'output/{title}_{datetime.datetime.now().date()}.csv')
         stats.write_stat_record(
             final_stats,
             f'output/{title}_{datetime.datetime.now().date()}.csv'
@@ -330,6 +333,7 @@ def test_timing_based_seperation(master_frame_list, title):
         for file in file_handles:
             final_output.append(imageio.imread(file))
             os.remove(file)
+        print(f'Outputing File to `output/{title}_{experiment_num}.gif`')
         imageio.mimsave(f'output/{title}_{experiment_num}.gif', final_output)
 
 
@@ -360,6 +364,7 @@ def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
         appended_results.append(result)
     c_results = list(tqdm.tqdm(map(iter_create_canvas, appended_results), total=len(input_frames)))
     print('Result Parsing Finished! Saving to disk, this might take a second...')
+
     stats.write_stat_record(
         final_stats,
         f'output/{title}_{datetime.datetime.now().date()}.csv'

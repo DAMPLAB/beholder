@@ -15,7 +15,7 @@ from typing import (
 import nd2reader
 import numpy as np
 
-from utils.logging import BLogger
+from backend.utils.logging import BLogger
 
 VALID_FILE_EXTS = ['.nd2']
 
@@ -52,22 +52,26 @@ def empty_frame_check(input_frame: np.ndarray) -> bool:
     return False
 
 
-def fetch_frame(fov_num: int, frame_num: int) -> np.ndarray:
+async def retrieve_frame(
+        fov_num: int,
+        frame_num: int,
+        channel_num: int,
+) -> np.ndarray:
     # Only fetching the grey frame for now.
     fs = FrameSeries()
-    return fs.get_renderable_frame(fov_num, frame_num)
+    return fs.get_renderable_frame(fov_num, frame_num, channel_num)
 
-def fetch_frame_shape():
+async def fetch_fov_size():
     fs = FrameSeries()
-    return fs.get_frame_shape()
+    return len(fs.frame_sets)
 
-def fetch_frame_dtype():
+async def fetch_xy_size(fov_num):
     fs = FrameSeries()
-    return fs.get_frame_dtype()
+    return len(fs.frame_sets[fov_num].frames)
 
 
 
-def load_frame_series(fp: str):
+async def load_frame_series(fp: str):
     '''
 
     Args:
@@ -80,7 +84,7 @@ def load_frame_series(fp: str):
     LOG.info(f'Loading File {filename}...')
     fs = FrameSeries()
     fs.load(fp)
-    LOG.info(f'Succesfully Loaded {filename}...')
+    LOG.info(f'Successfully Loaded {filename}...')
 
 
 class SingletonBaseClass(type):
@@ -131,8 +135,8 @@ class FrameSet:
             self.frames[f_index] = FrameSingular(frame, channel_labels)
 
 
-    def get_frame(self, fov_num: int ) -> FrameSingular:
-        return self.frames[fov_num]
+    def get_frame(self, frame_num: int, channel_num: int) -> FrameSingular:
+        return self.frames[frame_num].frame_data[channel_num]
 
     def get_frame_api(self, fov_num: int):
         frame = self.frames[fov_num]
@@ -153,6 +157,7 @@ class FrameSeries(metaclass=SingletonBaseClass):
     def __init__(self):
         self.filepath = None
         self.frame_sets = {}
+        self.channels = None
 
     def load(self, filepath: str):
         filename, file_extension = os.path.splitext(filepath)
@@ -168,6 +173,7 @@ class FrameSeries(metaclass=SingletonBaseClass):
             time_scale = input_frames.sizes['t']
             num_channels = input_frames.sizes['c']
             channels = input_frames.metadata['channels']
+            self.channels = channels
             frame_sets = []
             for i in range(view_number):
                 frame_offset = i * time_scale
@@ -208,13 +214,13 @@ class FrameSeries(metaclass=SingletonBaseClass):
 
         '''
         fov = self.frame_sets[fov_num]
-        return fov.frames.get_frame()
+        return fov[frame_num].get_frame(frame_num)
 
-    def get_renderable_frame(self, fov_num, frame_num):
+    def get_renderable_frame(self, fov_num, frame_num, channel_num):
         if self.frame_sets is None:
             LOG.info('Please load dataset.')
         fov = self.frame_sets[fov_num]
-        return fov.get_frame_api(frame_num)
+        return fov.get_frame(frame_num, channel_num)
 
     def get_frame_shape(self):
         if self.frame_sets is None:
