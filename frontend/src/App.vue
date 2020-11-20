@@ -20,7 +20,6 @@
         <v-file-input
             label="File input"
             outlined
-            dense
             v-on:change="sendFilepath"
         ></v-file-input>
       </v-responsive>
@@ -58,7 +57,14 @@
 
     <v-main>
       <button v-on:click="sendMessage('hello')">Send Message</button>
-      <canvas id="c"></canvas>
+      <div style="position: relative;">
+        <canvas id="layer1" width="100" height="100"
+                style="position: absolute; left: 0; top: 0; z-index: 0;"></canvas>
+        <canvas id="layer2" width="100" height="100"
+                style="position: absolute; left: 0; top: 0; z-index: 1;"></canvas>
+        <canvas id="layer3" width="100" height="100"
+                style="position: absolute; left: 0; top: 0; z-index: 2;"></canvas>
+      </div>
       <div>
         <button @click="drawRect">Add Rect</button>
         <button @click="subWidth">-</button>
@@ -69,10 +75,12 @@
       </div>
     </v-main>
     <v-slider
+        width=100
         v-model="fov_num"
-        :max="2000"
+        :max="fov_max"
         label="FOV"
         class="align-center"
+        v-on:change="fetchFrame"
     >
     </v-slider>
     <v-slider
@@ -80,6 +88,7 @@
         :max="2000"
         label="FRAME"
         class="align-center"
+        v-on:change="fetchFrame"
     >
     </v-slider>
 
@@ -105,6 +114,7 @@
 
 <script>
 import Vue from 'vue';
+import axios from 'axios';
 import HelloWorld from './components/HelloWorld.vue';
 import BCanvas from "@/components/ImageHandling/Canvas";
 
@@ -118,7 +128,9 @@ export default Vue.extend({
 
   data: () => ({
     frame_num: 0,
+    frame_max: 0,
     fov_num: 0,
+    fov_max: 0,
     connection: null,
     drawer: null,
     vueCanvas: null,
@@ -127,7 +139,7 @@ export default Vue.extend({
     loaded: false,
     frame_width: null,
     frame_height: null,
-
+    frame_url: null,
   }),
   methods: {
     sendMessage: function(message) {
@@ -136,7 +148,14 @@ export default Vue.extend({
     },
     sendFilepath: function(message) {
       let filepath = message.path
-      // And I image we'll want logging about incoming messages and the like.
+      axios.get(`http://localhost:8000/load_dataset/${filepath}`)
+          .then((response) => {
+            console.log(response.data);
+            console.log(response.status);
+            console.log(response.statusText);
+            console.log(response.headers);
+            console.log(response.config);
+          });
       let msg = {
         command: "LOAD_FRAMESERIES",
         params: {
@@ -157,44 +176,19 @@ export default Vue.extend({
         console.log(res)
         this.frame = res.ret
       })
-    }
+    },
     fetchFrame: function(event) {
-      let array_request = {
-        command: "FETCH_FRAME",
-        params: {
-          fov_num: this.fov_num,
-          frame_num: this.frame_num,
-        },
-      };
-      let byte_array = null
-      let frame_shape = null
-      let frame_dtype = null
-      this.connection.send(JSON.stringify(array_request))
-      this.connection.addEventListener('message', function (event) {
-        let res = JSON.parse(JSON.parse(event.data)[0]);
-        console.log(res)
-        byte_array = res.ret
-      })
-      let shape_request = {
-        command: "FETCH_FRAME_SHAPE",
-        params: {},
-      };
-      this.connection.send(JSON.stringify(shape_request))
-      this.connection.addEventListener('message', function (event) {
-        let res = JSON.parse(JSON.parse(event.data)[0]);
-        console.log(res)
-        frame_shape = res.ret
-      })
-      let dtype_request = {
-        command: "FETCH_FRAME_DTYPE",
-        params: {},
-      };
-      this.connection.send(JSON.stringify(dtype_request))
-      this.connection.addEventListener('message', function (event) {
-        let res = JSON.parse(JSON.parse(event.data)[0]);
-        console.log(res)
-        frame_dtype = res.ret
-      })
+      axios.get(`http://localhost:8000/fetch_frame/${this.fov_num}/${this.frame_num}/0`)
+          .then((response) => {
+            console.log('This is happening')
+            const imageUrl = window.URL.createObjectURL(new Blob([response.data]))
+            let img = new Image;
+            console.log(imageUrl)
+            img.src = imageUrl;
+            img.onload = function(){
+              this.vueCanvas.drawImage(img,0,0); // Or at whatever offset you like
+            };
+          });
     },
     drawRect() {
       // clear canvas
@@ -228,11 +222,25 @@ export default Vue.extend({
     }
   },
   mounted() {
-    let c = document.getElementById("c");
+    let c = document.getElementById("layer1");
     let ctx = c.getContext("2d");
     c.width = 1380;
     c.height = 1080;
     this.vueCanvas = ctx;
+    axios.get(`http://localhost:8000/get_fov_size/`)
+        .then((response) => {
+          let data = response.data
+          console.log(data)
+          this.fov_max = data['fov_size']
+          }
+          )
+    axios.get(`http://localhost:8000/get_xy_size/0`)
+        .then((response) => {
+              let data = response.data
+              console.log(data)
+              this.frame_max = data['xy_size']
+            }
+        )
   },
 });
 </script>

@@ -1,0 +1,25 @@
+# ------------------------------------------------------------------------------
+# Description:
+#
+# Usage:
+#
+# Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
+# ------------------------------------------------------------------------------
+preprocess_pipeline:
+  m-Cherry:
+    - downsample
+    - apply_brightness_contrast
+    - colorize_frame:
+        - color: red
+  PhC:
+    - percentile_threshold
+    - invert
+    - remove_background
+    - downsample
+  YFP:
+    - downsample
+    - apply_brightness_contrast
+    - colorize_frame:
+        - color: 'green'
+
+

@@ -21,7 +21,7 @@ import cv2
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.figure as m_figure
-from server.signal_processing.stats import CellSignal
+from backend.signal_processing.stats import CellSignal
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
