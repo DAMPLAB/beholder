@@ -12,6 +12,7 @@ from typing import (
     List,
 )
 
+import cv2
 import nd2reader
 import numpy as np
 
@@ -27,6 +28,24 @@ COLORATION_LUT = {
 
 LOG = BLogger()
 
+
+def transparent_frame(
+        input_frame: np.ndarray,
+        color_to_convert=(0, 0, 0),
+):
+    # Convert to RGB with alpha channel
+    output = cv2.cvtColor(input_frame, cv2.COLOR_BGR2RGBA)
+
+    # Coinvert from BGR to BGRA
+    bgra = cv2.cvtColor(input_frame, cv2.COLOR_BGR2BGRA)
+
+    # Slice of alpha channel
+    alpha = bgra[:, :, 3]
+
+    # Use logical indexing to set alpha channel to 0 where BGR=0
+    alpha[np.all(bgra[:, :, 0:3] == color_to_convert, 2)] = 0
+
+    return output
 
 def empty_frame_check(input_frame: np.ndarray) -> bool:
     '''
@@ -59,16 +78,44 @@ async def retrieve_frame(
 ) -> np.ndarray:
     # Only fetching the grey frame for now.
     fs = FrameSeries()
-    return fs.get_renderable_frame(fov_num, frame_num, channel_num)
+    if fs.is_active():
+        return fs.get_renderable_frame(
+            fov_num,
+            frame_num,
+            channel_num,
+        )
+
+
+async def retrieve_colored_frame(
+        fov_num: int,
+        frame_num: int,
+        channel_num: int,
+) -> np.ndarray:
+    # Only fetching the grey frame for now.
+    fs = FrameSeries()
+    if fs.is_active():
+        return fs.get_colored_frame(
+            fov_num,
+            frame_num,
+            channel_num,
+        )
+
 
 async def fetch_fov_size():
     fs = FrameSeries()
-    return len(fs.frame_sets)
+    if fs.is_active():
+        return len(fs.frame_sets)
+    return 0
+
 
 async def fetch_xy_size(fov_num):
     fs = FrameSeries()
-    return len(fs.frame_sets[fov_num].frames)
-
+    LOG.info('Function Starts')
+    if fs.is_active():
+        print(fov_num)
+        active_frames = fs.frame_sets[fov_num]
+        return len(active_frames.frames)
+    return 0
 
 
 async def load_frame_series(fp: str):
@@ -134,7 +181,6 @@ class FrameSet:
         for f_index, frame in enumerate(frame_iterable):
             self.frames[f_index] = FrameSingular(frame, channel_labels)
 
-
     def get_frame(self, frame_num: int, channel_num: int) -> FrameSingular:
         return self.frames[frame_num].frame_data[channel_num]
 
@@ -175,11 +221,19 @@ class FrameSeries(metaclass=SingletonBaseClass):
             channels = input_frames.metadata['channels']
             self.channels = channels
             frame_sets = []
+            access_toggle = False
+            access_value = 0
             for i in range(view_number):
                 frame_offset = i * time_scale
                 inner_list = []
                 for j in range(0, time_scale * num_channels, num_channels):
-                    access_index = frame_offset + j
+                    if access_toggle:
+                        print('Access Toggle Triggered')
+                        access_index = frame_offset + j - access_value
+                        access_toggle = False
+                        access_value = 0
+                    else:
+                        access_index = frame_offset + j
                     grey_frame = input_frames[access_index]
                     ch1_frame = input_frames[access_index + 1]
                     ch2_frame = input_frames[access_index + 2]
@@ -193,7 +247,11 @@ class FrameSeries(metaclass=SingletonBaseClass):
                     else:
                         d_stack = np.stack([grey_frame, ch1_frame, ch2_frame])
                         inner_list.append(d_stack)
+                if len(inner_list) <= 10:
+                    access_toggle = True
+                    access_value = len(inner_list)
                 if len(inner_list) > 10:
+                    print(len(inner_list))
                     frame_sets.append(inner_list)
                 else:
                     continue
@@ -202,6 +260,9 @@ class FrameSeries(metaclass=SingletonBaseClass):
                     frame_set,
                     channels,
                 )
+
+    def is_active(self):
+        return True if self.frame_sets else False
 
     def get_individual_frame(self, fov_num: int, frame_num: int):
         '''
@@ -222,6 +283,15 @@ class FrameSeries(metaclass=SingletonBaseClass):
         fov = self.frame_sets[fov_num]
         return fov.get_frame(frame_num, channel_num)
 
+    def get_colored_frame(self, fov_num, frame_num, channel_num):
+        frame = self.get_renderable_frame(fov_num, frame_num, channel_num)
+        channel_name = self.channels[channel_num]
+        # TODO. We might have to do hardcore alpha for the dark
+        return self.colorize_frame(
+            input_frame=frame,
+            color=COLORATION_LUT[channel_name],
+        )
+
     def get_frame_shape(self):
         if self.frame_sets is None:
             LOG.info('Please load dataset.')
@@ -233,6 +303,28 @@ class FrameSeries(metaclass=SingletonBaseClass):
             LOG.info('Please load dataset.')
         fov = self.frame_sets[0]
         return fov.get_frame_dtype()
+
+    def colorize_frame(self, input_frame: np.ndarray, color: str) -> np.ndarray:
+        '''
+        Converts a 1-Channel Grayscale Image to RGB Space and then converts the
+        prior image to a singular color.
+
+        Args:
+            input_frame: Input numpy array
+            color: (red|blue|green) What color to convert to:
+
+        Returns:
+            Colorized ndarray
+
+        '''
+        input_frame = cv2.cvtColor(input_frame, cv2.COLOR_GRAY2RGB)
+        if color == 'green':
+            input_frame[:, :, (0, 2)] = 0
+        if color == 'blue':
+            input_frame[:, :, (0, 1)] = 0
+        if color == 'red':
+            input_frame[:, :, (1, 2)] = 0
+        return input_frame
 
 
 if __name__ == '__main__':

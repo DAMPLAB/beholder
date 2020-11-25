@@ -50,8 +50,11 @@ from starlette.middleware.cors import CORSMiddleware
 from backend.ds.FrameSeries import (
     load_frame_series,
     retrieve_frame,
+    retrieve_colored_frame,
     fetch_fov_size,
     fetch_xy_size,
+    FrameSeries,
+    transparent_frame,
 )
 from backend.ds.Pipeline import (
     instantiate_from_yaml,
@@ -83,9 +86,20 @@ async def echo_route(input_str: str):
 # ------------------------------ File I/O Routes -------------------------------
 @app.get("/fetch_frame/{fov_num}/{frame_num}/{channel_num}")
 async def fetch_frame(fov_num: int, frame_num: int, channel_num: int):
-    cv2img = await retrieve_frame(fov_num, frame_num, channel_num)
-    res, im_png = cv2.imencode(".png", cv2img)
-    return StreamingResponse(io.BytesIO(im_png.tobytes()), media_type="image/png")
+    fs = FrameSeries()
+    cv2img = None
+    if fs.is_active():
+        if not channel_num:
+            cv2img = await retrieve_frame(fov_num, frame_num, channel_num)
+        if channel_num:
+            temp = await retrieve_colored_frame(fov_num, frame_num, channel_num)
+            cv2img = transparent_frame(temp)
+
+        res, im_png = cv2.imencode(".png", cv2img)
+        return StreamingResponse(
+            io.BytesIO(im_png.tobytes()),
+            media_type="image/png",
+        )
 
 
 @app.route("/load_dataset/{param:path}", name="path-convertor")
@@ -97,15 +111,8 @@ async def load_dataset(fp: str):
     return JSONResponse({'uwu': 'uwuw'})
 
 
-@app.route("/load_settings/")
-async def load_dataset(fp: str):
-    # Returns a cv2 image array from the document vector
-    instantiate_from_yaml()
-    return JSONResponse({'uwu': 'uwuw'})
-
-
 @app.route("/run_individual_pipeline/")
-async def load_dataset(fp: str):
+async def run_indiv_pipeline(fp: str):
     # Returns a cv2 image array from the document vector
     await run_channel_pipeline()
     return JSONResponse({'uwu': 'uwuw'})
@@ -118,8 +125,9 @@ async def get_fov_size(_):
     return JSONResponse({'fov_size': fov_size})
 
 
-@app.route("/get_xy_size/{fov_num}")
-async def get_fov_size(fov_num: int):
+@app.get("/get_xy_size/{fov_num}")
+async def get_xy_size(fov_num: int):
+    LOG.info('Call starts')
     # Returns a cv2 image array from the document vector
     xy_size = await fetch_xy_size(fov_num)
     return JSONResponse({'xy_size': xy_size})
