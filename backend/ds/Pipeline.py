@@ -13,7 +13,7 @@ from typing import (
     Dict,
     List,
     Tuple,
-    Optional
+    Optional,
 )
 
 import cv2
@@ -22,16 +22,18 @@ import yaml
 from .FrameSeries import FrameSeries, retrieve_frame
 from backend.utils.logging import BLogger
 
-
 LOG = BLogger()
 
-def instantiate_from_yaml():
+
+async def instantiate_from_yaml():
     pl = Pipeline()
     pl.parse_config()
+
 
 async def run_channel_pipeline():
     pl = Pipeline()
     await pl.run_channel_pipeline('YFP', 0, 0, 0)
+
 
 class SingletonBaseClass(type):
     _instances = {}
@@ -91,7 +93,6 @@ class Pipeline(metaclass=SingletonBaseClass):
                         descriptor,
                         **descriptor,
                     )
-
 
     def register_operation(
             self,

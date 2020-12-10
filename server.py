@@ -14,9 +14,9 @@ Roadmap:
     - [ ] Persistence of Model selection to Backend
 - [ ] Initial UI Work.
     - [x] Frontend connection to backend
-    - [ ] UI Elements to render the canvas.
-    - [ ] UI Elements to Access the Initial Frame
-    - [ ] Ability to render individual frames and push them up the websocket to
+    - [x] UI Elements to render the canvas.
+    - [x] UI Elements to Access the Initial Frame
+    - [x] Ability to render individual frames and push them up the websocket to
             a canvas element on the frontend.
     - [ ] Ability to select and arbitrarily design the processing pipeline.
     - [ ] Abiltiy to 'test' cellular segmentation using our currently designed
@@ -111,6 +111,13 @@ async def load_dataset(fp: str):
     return JSONResponse({'uwu': 'uwuw'})
 
 
+@app.route("/load_pipeline_config/")
+async def load_pipeline_config(fp: str):
+    # Returns a cv2 image array from the document vector
+    await instantiate_from_yaml()
+    return JSONResponse({'uwu': 'uwuw'})
+
+
 @app.route("/run_individual_pipeline/")
 async def run_indiv_pipeline(fp: str):
     # Returns a cv2 image array from the document vector
@@ -137,14 +144,6 @@ async def get_xy_size(fov_num: int):
 def spawn_electron_process():
     # Hardcoded for now. The script is located in the package.json for future
     # ref.
-    LOG.info('Hello')
-    electron_process = subprocess.Popen(
-        "pwd",
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        shell=True
-    )
     electron_process = subprocess.Popen(
         "cd frontend && npm run electron:serve",
         stdin=subprocess.PIPE,
@@ -153,7 +152,6 @@ def spawn_electron_process():
         shell=True
     )
     REGISTERED_SUBPROCESSES['electron_process'] = electron_process
-    LOG.info('Goodbye')
 
 
 # ------------------------------ Shutdown Behavior ------------------------------

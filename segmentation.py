@@ -291,7 +291,7 @@ def test_timing_based_seperation(master_frame_list, title):
         print('Result Parsing Finished! Saving to disk, this might take a second...')
         print(
             f'Statistical information generated and persited to disk at '
-              f'output/{title}_{datetime.datetime.now().date()}.csv')
+            f'output/{title}_{datetime.datetime.now().date()}.csv')
         stats.write_stat_record(
             final_stats,
             f'output/{title}_{datetime.datetime.now().date()}.csv'
@@ -337,22 +337,40 @@ def test_timing_based_seperation(master_frame_list, title):
         imageio.mimsave(f'output/{title}_{experiment_num}.gif', final_output)
 
 
-def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
+def enqueue_segmentation_pipeline(
+        input_frames: List[np.ndarray],
+        title: str,
+        channel_names: List[str],
+        f_index: int,
+):
+    print('Got here 1')
     input_frames = sigpro_utility.ingress_tiffs(input_frames)
     final_frame = []
     frame_count = len(input_frames)
     empty_stats = [[(0, 0, 0), (0, 0, 0)]] * frame_count
     final_stats = deque(empty_stats, maxlen=frame_count)
-    results = list(tqdm.tqdm(map(segmentation_pipeline, input_frames), total=len(input_frames)))
+    root = f'output/{title}_{datetime.datetime.now().date()}'
+    print('Got here 2')
+    if not os.path.exists(root):
+        os.mkdir(root)
+    output_directory = root + f'/{f_index}'
+    print('Got here 3')
+    if not os.path.exists(output_directory):
+        os.mkdir(output_directory)
+    stats.write_raw_frames(input_frames, channel_names, output_directory, f_index)
+    print('Got here 4')
+    results = list(
+        tqdm.tqdm(map(segmentation_pipeline, input_frames),
+                  desc=f'Running Segmentation Pipeline of {f_index}...',
+                  total=len(input_frames)))
     # Final Frame, stats, mask, and Raw
-    print('Finished Segmentation Pipeline! Parsing Results..')
-    for index, result in enumerate(tqdm.tqdm(results)):
+    for index, result in enumerate(tqdm.tqdm(results, desc="Extracting Results...")):
         out_frame, frame_stats, mask_frame, raw_frame = result
         # canvas_list.append(out_frame)
         final_frame.append(out_frame)
         final_stats.append(frame_stats)
     appended_results = []
-    for index, result in enumerate(tqdm.tqdm(results)):
+    for index, result in enumerate(tqdm.tqdm(results, desc="Parsing Results...")):
         result = list(result)
         point_in_time = list(islice(final_stats, 0, index))
         historical_point = copy.copy(point_in_time)
@@ -362,12 +380,12 @@ def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
         result.append(title)
         result.append(index)
         appended_results.append(result)
-    c_results = list(tqdm.tqdm(map(iter_create_canvas, appended_results), total=len(input_frames)))
-    print('Result Parsing Finished! Saving to disk, this might take a second...')
-
+    c_results = list(tqdm.tqdm(map(iter_create_canvas, appended_results),
+                               desc="Generating Visualizations...",
+                               total=len(input_frames)))
     stats.write_stat_record(
         final_stats,
-        f'output/{title}_{datetime.datetime.now().date()}.csv'
+        f'{output_directory}/{f_index}_results.csv'
     )
     write_list = []
     for index, res in enumerate(c_results):
@@ -381,12 +399,14 @@ def enqueue_segmentation_pipeline(input_frames: List[np.ndarray], title: str):
             map(
                 write_out,
                 write_list,
-            ), total=len(input_frames)))
+            ),
+            desc="Writing Everything to disk...",
+            total=len(input_frames)))
     final_output = []
     for file in file_handles:
         final_output.append(imageio.imread(file))
         os.remove(file)
-    imageio.mimsave(f'output/{title}.gif', final_output)
+    imageio.mimsave(f'{output_directory}/{f_index}_video.gif', final_output)
 
 
 @click.command()
@@ -410,9 +430,9 @@ def segmentation_ingress(fn: str, subselection: int):
     if subselection:
         frames = frames[:subselection]
     print(f'Starting Segmentation Pipeline..')
+    channel_names = sigpro_utility.get_channel_names(fn)
     for f_index, frame in enumerate(frames):
-        enqueue_segmentation_pipeline(frame, f'{title}_{f_index}')
-
+        enqueue_segmentation_pipeline(frame, f'{title}', channel_names, f_index)
 
 
 if __name__ == '__main__':

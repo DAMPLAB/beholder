@@ -129,7 +129,6 @@ def test_iter_axes_options(fn: str):
                             tiffile.imsave(fn, w_frame)
                         write_list.append(fn)
                     inner_list.append(write_list)
-            # TODO: Figure out source of spurious empty frames.
             if len(inner_list) > 10:
                 outer_list.append(inner_list)
             else:

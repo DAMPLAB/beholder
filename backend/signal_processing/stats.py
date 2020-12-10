@@ -93,6 +93,35 @@ def generate_frame_stats(
     return out_list
 
 
+def write_raw_frames(
+        input_frames: List[np.ndarray],
+        channel_names: List[str],
+        output_fp: str,
+        f_index: int
+):
+    '''
+
+    Args:
+        input_frames:
+        channel_names:
+        f_index:
+        output_fp:
+
+    Returns:
+
+    '''
+    output_fp += f'/raw/{f_index}'
+    if not os.path.isdir(output_fp):
+        os.makedirs(output_fp)
+    for index, frame in enumerate(input_frames):
+        flattened_arrays = list(map(np.ravel, frame))
+        for channel, array in zip(channel_names, flattened_arrays):
+            print(array)
+            print(type(array))
+            fp = output_fp + f'/{index}_{channel}_raw_data.csv'
+            np.savetxt(fp, array, delimiter=",", fmt='%d')
+
+
 def write_stat_record(
         total_statistics,
         record_name: str,
