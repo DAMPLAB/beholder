@@ -116,8 +116,6 @@ def write_raw_frames(
     for index, frame in enumerate(input_frames):
         flattened_arrays = list(map(np.ravel, frame))
         for channel, array in zip(channel_names, flattened_arrays):
-            print(array)
-            print(type(array))
             fp = output_fp + f'/{index}_{channel}_raw_data.csv'
             np.savetxt(fp, array, delimiter=",", fmt='%d')
 

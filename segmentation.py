@@ -7,6 +7,7 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+import csv
 from collections import deque
 import click
 import copy
@@ -23,9 +24,11 @@ import warnings
 from functools import partial
 from itertools import repeat, islice
 from multiprocessing import Pool, freeze_support
+from pathlib import Path
 
 import imageio
 import numpy as np
+import pandas as pd
 import tqdm
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -147,17 +150,6 @@ def segmentation_pipeline(
 ):
     grey_frame, red_frame, green_frame = input_frames
     raw_frame = copy.copy(grey_frame)
-    # if current_device_mask_frame is None:
-    #     current_device_mask_frame, sentinel_val = \
-    #         signal_transform.device_highpass_filter(grey_frame)
-    # if not signal_transform.mask_recalculation_check(grey_frame, sentinel_val):
-    #     current_device_mask_frame, sentinel_val = \
-    #         signal_transform.device_highpass_filter(grey_frame)
-    # grey_frame = signal_transform.normalize_subsection(
-    #     grey_frame,
-    #     current_device_mask_frame,
-    #     sentinel_val,
-    # )
     c_red_frame = preprocess_color_channel(red_frame, 'red')
     c_green_frame = preprocess_color_channel(green_frame, 'green')
     mask_frame = np.zeros_like(grey_frame)
@@ -207,7 +199,7 @@ def segmentation_pipeline(
         labeled_green,
     )
     mask_frame = generate_mask(mask_frame, contours)
-    return out_frame, frame_stats, mask_frame, raw_frame
+    return out_frame, frame_stats, mask_frame, raw_frame, green_cell_signals, red_cell_signals
 
     # TODO: This is untenable for a live mode, so we're going to have to make
     # some duplicated code at some point
@@ -226,115 +218,8 @@ def iter_create_canvas(result):
 def write_out(entry):
     frame, title, index = entry
     out_structure = f'output/{title}_f{index}.gif'
-    # if os.path.exists(out_structure):
-    #     shutil.copyfile(
-    #         out_structure,
-    #         f'output/{title}_f{index}_prior.gif',
-    #     )
     imageio.imwrite(out_structure, frame)
     return out_structure
-
-
-def test_timing_based_seperation(master_frame_list, title):
-    for experiment_num, file_locs in enumerate(master_frame_list):
-        input_frames = sigpro_utility.ingress_tiffs(file_locs)
-        final_frame = []
-        frame_count = len(input_frames)
-        empty_stats = [[(0, 0, 0), (0, 0, 0)]] * frame_count
-        final_stats = deque(empty_stats, maxlen=frame_count)
-        import time
-        start = time.time()
-        # segmentation_pipeline(input_frames)
-        with Pool(PROCESSES) as p:
-            results = list(
-                tqdm.tqdm(
-                    p.imap(segmentation_pipeline, input_frames),
-                    total=len(input_frames),
-                    desc='Running Segmentation Pipeline...')
-            )
-            p.close()
-            p.join()
-        # Final Frame, stats, mask, and Raw
-        print('Finished Segmentation Pipeline! Parsing Results..')
-        # stop = time.time() - start
-        # print(f'Total Time: {stop}'
-        #       f'Approx. Time per frame = {stop / len(input_frames)}'
-        #       )
-        for index, result in enumerate(tqdm.tqdm(results)):
-            out_frame, frame_stats, mask_frame, raw_frame = result
-            # canvas_list.append(out_frame)
-            final_frame.append(out_frame)
-            final_stats.append(frame_stats)
-        appended_results = []
-        for index, result in enumerate(tqdm.tqdm(results)):
-            result = list(result)
-            point_in_time = list(islice(final_stats, 0, index))
-            historical_point = copy.copy(point_in_time)
-            delta = len(final_stats) - index
-            historical_point += [[(0, 0, 0), (0, 0, 0)]] * delta
-            result.append(historical_point)
-            result.append(title)
-            result.append(index)
-            appended_results.append(result)
-        with Pool(PROCESSES) as p:
-            c_results = list(tqdm.tqdm(p.imap(iter_create_canvas, appended_results), total=len(input_frames)))
-            p.close()
-            p.join()
-        # for canvas_list.append(graphing.generate_image_canvas(
-        #         out_frame,
-        #         signal_transform.downsample_image(raw_frame),
-        #         final_stats,
-        #         f'output/{title}- Frame: {index}',
-        #         frame_count
-        #     ))
-        # sigpro_utility.display_frame(c_results[0])
-        print('Result Parsing Finished! Saving to disk, this might take a second...')
-        print(
-            f'Statistical information generated and persited to disk at '
-            f'output/{title}_{datetime.datetime.now().date()}.csv')
-        stats.write_stat_record(
-            final_stats,
-            f'output/{title}_{datetime.datetime.now().date()}.csv'
-        )
-        write_list = []
-        for index, res in enumerate(c_results):
-            write_list.append([res, title, index])
-        # iter = list(sigpro_utility.list_chunking(canvas_list, 20))
-        # file_list = []
-        # TODO: I need to balance moving things out of memory in the main python
-        #  function with the speed loss of hitting the disk for every file.
-        with Pool(PROCESSES) as p:
-            file_handles = list(
-                tqdm.tqdm(
-                    p.imap(
-                        write_out,
-                        write_list,
-                    ), total=len(input_frames), desc="Writing out File..."))
-            p.close()
-            p.join()
-        # while True:
-        #     res = next(iter, None)
-        #     if res is None:
-        #         break
-        #     out_structure = f'output/{title}_f{file_counter}.gif'
-        #     if os.path.exists(out_structure):
-        #         shutil.copyfile(
-        #             out_structure,
-        #             f'output/{title}_f{file_counter}_prior.gif',
-        #         )
-        #     imageio.mimsave(out_structure, res)
-        #     file_list.append(out_structure)
-        #     file_counter += 1
-        # Compression
-        # for file in file_handles:
-        #     sigpro_utility.resize_gif(file)
-        # # Stick em together
-        final_output = []
-        for file in file_handles:
-            final_output.append(imageio.imread(file))
-            os.remove(file)
-        print(f'Outputing File to `output/{title}_{experiment_num}.gif`')
-        imageio.mimsave(f'output/{title}_{experiment_num}.gif', final_output)
 
 
 def enqueue_segmentation_pipeline(
@@ -343,34 +228,46 @@ def enqueue_segmentation_pipeline(
         channel_names: List[str],
         f_index: int,
 ):
-    print('Got here 1')
     input_frames = sigpro_utility.ingress_tiffs(input_frames)
     final_frame = []
     frame_count = len(input_frames)
     empty_stats = [[(0, 0, 0), (0, 0, 0)]] * frame_count
     final_stats = deque(empty_stats, maxlen=frame_count)
     root = f'output/{title}_{datetime.datetime.now().date()}'
-    print('Got here 2')
     if not os.path.exists(root):
         os.mkdir(root)
     output_directory = root + f'/{f_index}'
-    print('Got here 3')
     if not os.path.exists(output_directory):
         os.mkdir(output_directory)
-    stats.write_raw_frames(input_frames, channel_names, output_directory, f_index)
-    print('Got here 4')
+    # stats.write_raw_frames(input_frames, channel_names, output_directory, f_index)
     results = list(
         tqdm.tqdm(map(segmentation_pipeline, input_frames),
-                  desc=f'Running Segmentation Pipeline of {f_index}...',
                   total=len(input_frames)))
     # Final Frame, stats, mask, and Raw
+    segmentation_output_chan_1 = f'{output_directory}/{f_index}_{channel_names[1]}.csv'
+    segmentation_output_chan_2 = f'{output_directory}/{f_index}_{channel_names[2]}.csv'
+    if not os.path.exists(segmentation_output_chan_1):
+        Path(segmentation_output_chan_1).touch()
+    if not os.path.exists(segmentation_output_chan_2):
+        Path(segmentation_output_chan_2).touch()
+    for index, result in enumerate(tqdm.tqdm(results)):
+        _, _, _, _, green_stats, red_stats = result
+        with open(segmentation_output_chan_1, 'a+') as chan_1_file:
+            output = [stat.sum_signal for stat in green_stats]
+            writer = csv.writer(chan_1_file)
+            writer.writerow(output)
+        with open(segmentation_output_chan_2, 'a+') as chan_2_file:
+            output = [stat.sum_signal for stat in red_stats]
+            writer = csv.writer(chan_2_file)
+            writer.writerow(output)
     for index, result in enumerate(tqdm.tqdm(results, desc="Extracting Results...")):
-        out_frame, frame_stats, mask_frame, raw_frame = result
+        out_frame, frame_stats, mask_frame, raw_frame, _, _ = result
         # canvas_list.append(out_frame)
         final_frame.append(out_frame)
         final_stats.append(frame_stats)
     appended_results = []
     for index, result in enumerate(tqdm.tqdm(results, desc="Parsing Results...")):
+        result = result[:-2]
         result = list(result)
         point_in_time = list(islice(final_stats, 0, index))
         historical_point = copy.copy(point_in_time)
@@ -433,6 +330,7 @@ def segmentation_ingress(fn: str, subselection: int):
     channel_names = sigpro_utility.get_channel_names(fn)
     for f_index, frame in enumerate(frames):
         enqueue_segmentation_pipeline(frame, f'{title}', channel_names, f_index)
+        print('-----')
 
 
 if __name__ == '__main__':
