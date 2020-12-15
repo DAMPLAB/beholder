@@ -25,13 +25,14 @@ from functools import partial
 from itertools import repeat, islice
 from multiprocessing import Pool, freeze_support
 from pathlib import Path
-
+import gc
 import imageio
 import numpy as np
 import pandas as pd
 import tqdm
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+import matplotlib.pyplot as plt
 
 from backend.signal_processing import (
     signal_transform,
@@ -39,6 +40,7 @@ from backend.signal_processing import (
     graphing,
     stats,
 )
+from memory_profiler import profile
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -227,8 +229,26 @@ def enqueue_segmentation_pipeline(
         title: str,
         channel_names: List[str],
         f_index: int,
+        render_videos: bool,
 ):
+    if os.path.getsize(input_frames) < 400:
+        return
     input_frames = sigpro_utility.ingress_tiffs(input_frames)
+    # channel_lengths = int(len(input_frames)/len(channel_names))
+    channel_lengths = 3
+    frames = []
+    grey = input_frames[0]
+    red = input_frames[1]
+    green = input_frames[2]
+    input_frames = list(zip(grey, red, green))
+    # for i in range(0, channel_lengths):
+    #     frames.append(
+    #         tuple([
+    #             input_frames[i],
+    #             input_frames[i+channel_lengths],
+    #             input_frames[i+(channel_lengths*2)]])
+    #     )
+    # input_frames = frames
     final_frame = []
     frame_count = len(input_frames)
     empty_stats = [[(0, 0, 0), (0, 0, 0)]] * frame_count
@@ -239,10 +259,10 @@ def enqueue_segmentation_pipeline(
     output_directory = root + f'/{f_index}'
     if not os.path.exists(output_directory):
         os.mkdir(output_directory)
-    # stats.write_raw_frames(input_frames, channel_names, output_directory, f_index)
-    results = list(
-        tqdm.tqdm(map(segmentation_pipeline, input_frames),
-                  total=len(input_frames)))
+    with Pool(PROCESSES) as p:
+        results = list(
+            tqdm.tqdm(p.imap(segmentation_pipeline, input_frames),
+                      total=len(input_frames)))
     # Final Frame, stats, mask, and Raw
     segmentation_output_chan_1 = f'{output_directory}/{f_index}_{channel_names[1]}.csv'
     segmentation_output_chan_2 = f'{output_directory}/{f_index}_{channel_names[2]}.csv'
@@ -277,40 +297,43 @@ def enqueue_segmentation_pipeline(
         result.append(title)
         result.append(index)
         appended_results.append(result)
-    c_results = list(tqdm.tqdm(map(iter_create_canvas, appended_results),
-                               desc="Generating Visualizations...",
-                               total=len(input_frames)))
-    stats.write_stat_record(
-        final_stats,
-        f'{output_directory}/{f_index}_results.csv'
-    )
-    write_list = []
-    for index, res in enumerate(c_results):
-        write_list.append([res, title, index])
-    # iter = list(sigpro_utility.list_chunking(canvas_list, 20))
-    # file_list = []
-    # TODO: I need to balance moving things out of memory in the main python
-    #  function with the speed loss of hitting the disk for every file.
-    file_handles = list(
-        tqdm.tqdm(
-            map(
-                write_out,
-                write_list,
-            ),
-            desc="Writing Everything to disk...",
-            total=len(input_frames)))
-    final_output = []
-    for file in file_handles:
-        final_output.append(imageio.imread(file))
-        os.remove(file)
-    imageio.mimsave(f'{output_directory}/{f_index}_video.gif', final_output)
+    if render_videos:
+        with Pool(PROCESSES) as p:
+            c_results = list(tqdm.tqdm(p.imap(iter_create_canvas, appended_results),
+                                       desc="Generating Visualizations...",
+                                       total=len(input_frames)))
+        stats.write_stat_record(
+            final_stats,
+            f'{output_directory}/{f_index}_results.csv'
+        )
+        write_list = []
+        for index, res in enumerate(c_results):
+            write_list.append([res, title, index])
+        # iter = list(sigpro_utility.list_chunking(canvas_list, 20))
+        # file_list = []
+        # TODO: I need to balance moving things out of memory in the main python
+        #  function with the speed loss of hitting the disk for every file.
+        file_handles = list(
+            tqdm.tqdm(
+                map(
+                    write_out,
+                    write_list,
+                ),
+                desc="Writing Everything to disk...",
+                total=len(input_frames)))
+        final_output = []
+        for file in file_handles:
+            final_output.append(imageio.imread(file))
+            os.remove(file)
+        imageio.mimsave(f'{output_directory}/{f_index}_video.gif', final_output)
 
 
+# /mnt/shared/data/microscopy/4-SR_1_9_16hIPTG_6hM9_TS_MC5.nd2
 @click.command()
 @click.option(
-    '--fn',
-    default="data/raw_nd2/1-SR_1_5_6hPre-C_2h_1mMIPTG_OFF_1hmMIPTG_ON_22hM9_TS_MC1.nd2",
-    prompt='Filepath to Input ND2 files.'
+    '--fp',
+    default='/mnt/shared/code/damp_lab/beholder/data/raw_tiffs/',
+    prompt='Filepath to Input ND2 file or TIFF Directory.'
 )
 @click.option(
     '--subselection',
@@ -318,19 +341,42 @@ def enqueue_segmentation_pipeline(
     prompt='Subselection of Frames. 0 indicates that segmentation will be '
            'performed on all frames'
 )
-def segmentation_ingress(fn: str, subselection: int):
-    title = (fn.split('/')[-1])[:-4]
+@click.option(
+    '--render_videos',
+    default=True,
+    prompt='Render Output Videos'
+)
+def segmentation_ingress(fp: str, subselection: int, render_videos: bool):
+    title = (fp.split('/')[-1])[:-4]
     print(f'Loading {title}... (This may take a second)')
-    frames = sigpro_utility.test_iter_axes_options(fn)
-    # frames = sigpro_utility.ingress_tiffs(frames)
-    print(f'Loading Complete!')
-    if subselection:
-        frames = frames[:subselection]
-    print(f'Starting Segmentation Pipeline..')
-    channel_names = sigpro_utility.get_channel_names(fn)
-    for f_index, frame in enumerate(frames):
-        enqueue_segmentation_pipeline(frame, f'{title}', channel_names, f_index)
-        print('-----')
+    frame_paths = None
+    # channel_names = None
+    # if Path(fp).suffix == '.nd2':
+    #     print('ND2 Detected. Converting into TIFF format...')
+    #     frame_paths = sigpro_utility.nd2_convert(fp)
+    #     channel_names = sigpro_utility.get_channel_names(fp)
+    if os.path.isdir(fp):
+        # frame_paths = sigpro_utility.batch_convert(fp)
+        print('Tiff Mode Activated...')
+        frame_paths = sigpro_utility.grab_tiff_filenames(fp)
+        channel_names = ['PhlC', 'm-Cherry', 'YFP']
+    if frame_paths is not None:
+        print(f'Loading Complete!')
+        if subselection:
+            frame_paths = frame_paths[:subselection]
+        print(f'Starting Segmentation Pipeline..')
+        for f_index in range(0, len(frame_paths)):
+            frame = frame_paths[f_index]
+            enqueue_segmentation_pipeline(
+                frame,
+                f'{Path(frame).name.split(".")[0]}',
+                channel_names,
+                f_index,
+                render_videos,
+            )
+            print('-----')
+            plt.close('all')
+            gc.collect()
 
 
 if __name__ == '__main__':

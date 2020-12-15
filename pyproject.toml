@@ -5,7 +5,7 @@ description = ""
 authors = ["W.R. Jackson"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "3.8"
 tensorflow = "^2.3.1"
 opencv-python = "^4.4.0"
 click = "^7.1.2"
@@ -30,8 +30,10 @@ fastapi = "^0.61.2"
 seaborn = "^0.11.0"
 uvicorn = "^0.12.2"
 imagecodecs = "^2020.5.30"
-napari = {extras = ["pyside2"], version = "^0.4.2"}
-PyQt5 = "^5.15.2"
+slack-sdk = "^3.1.0"
+numba = "^0.52.0"
+memory-profiler = "^0.58.0"
+python-bioformats = "^4.0.0"
 
 
 [tool.poetry.dev-dependencies]

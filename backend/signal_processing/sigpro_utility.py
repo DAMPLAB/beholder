@@ -10,10 +10,15 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 import datetime
 import glob
 import math
+import operator
 import os
+from pathlib import Path
 import struct
+from xml.etree import ElementTree as ETree
 
+import bioformats as bf
 import cv2
+import javabridge
 import matplotlib.pyplot as plt
 import numpy as np
 import nd2reader
@@ -21,6 +26,9 @@ from pims import ND2_Reader as nd2_sdk
 from PIL import Image
 import tqdm
 import tiffile
+from backend.utils.slack_messaging import slack_message
+
+# javabridge.start_vm(class_path=bf.JARS)
 
 
 # --------------------------- Utility Functionality ----------------------------
@@ -84,14 +92,12 @@ def glob_tiffs(fp: str, chunk_size: int, channel_num: int = 3):
     return master_list
 
 
-def ingress_tiffs(list_of_tiff_files):
-    out_array = []
-    for file in list_of_tiff_files:
-        out_array.append(np.array(tiffile.imread(file)).astype('uint16'))
-    return out_array
+def ingress_tiffs(input_fn: str):
+    tiff = tiffile.imread(input_fn)
+    uint16_cast = (tiff * 65536).round().astype(np.uint16)
+    return uint16_cast
 
-
-def test_iter_axes_options(fn: str):
+def get_separated_frames(fn: str):
     channels = get_channel_names(fn)
     base_filename = (fn.split("/")[-1])[:-4]
     # Should have either the ability to quanitfy the amount of memory that this
@@ -101,6 +107,10 @@ def test_iter_axes_options(fn: str):
     if not os.path.exists(dir_path):
         os.mkdir(dir_path)
     with nd2reader.ND2Reader(fn) as input_frames:
+        if len(input_frames.sizes) < 5:
+            slack_message(f'Could not find 5th dimension for {fn}')
+            return None
+        print(f'{input_frames.sizes=}')
         input_frames.iter_axes = 'vtc'
         view_number = input_frames.sizes['v']
         time_scale = input_frames.sizes['t']
@@ -109,8 +119,12 @@ def test_iter_axes_options(fn: str):
         for i in range(view_number):
             frame_offset = i * time_scale
             inner_list = []
-            for j in range(0, time_scale*num_channels, num_channels):
+
+            for j in range(0, (time_scale*num_channels), num_channels):
                 access_index = frame_offset + j
+                print(f'{access_index=}')
+                print(f'{time_scale*num_channels=}')
+                print(f'{j=}')
                 grey_frame = input_frames[access_index]
                 ch1_frame = input_frames[access_index + 1]
                 ch2_frame = input_frames[access_index + 2]
@@ -124,7 +138,7 @@ def test_iter_axes_options(fn: str):
                 else:
                     write_list = []
                     for k, w_frame in zip(range(3), [grey_frame, ch1_frame, ch2_frame]):
-                        fn = f'data/raw_tiffs/{base_filename}/{channels[k]}_{access_index+k}.tiff'
+                        fn = f'data/raw_tiffs/{base_filename}/{channels[k]}_{access_index}.tiff'
                         if not os.path.exists(fn):
                             tiffile.imsave(fn, w_frame)
                         write_list.append(fn)
@@ -476,6 +490,26 @@ def extract_and_resize_frames(path, resize_to=None):
     return all_frames
 
 
+def parse_xml_metadata(xml_string, array_order='tyxc'):
+    array_order = array_order.upper()
+    names, sizes, resolutions = [], [], []
+    spatial_array_order = [c for c in array_order if c in 'XYZ']
+    size_tags = ['Size' + c for c in array_order]
+    res_tags = ['PhysicalSize' + c for c in spatial_array_order]
+    metadata_root = ETree.fromstring(xml_string)
+    for child in metadata_root:
+        if child.tag.endswith('Image'):
+            names.append(child.attrib['Name'])
+            for grandchild in child:
+                if grandchild.tag.endswith('Pixels'):
+                    att = grandchild.attrib
+                    sizes.append(tuple([int(att[t]) for t in size_tags]))
+                    resolutions.append(tuple([float(att[t])
+                                              for t in res_tags]))
+    return names, sizes, resolutions
+
+
+
 def tiff_splitter(fp: str):
     frames = parse_nd2_file(fp)
     channels = get_channel_names(fp)
@@ -488,6 +522,50 @@ def tiff_splitter(fp: str):
         for j, inner_frame in enumerate(frame):
             fn = f'data/raw_tiffs/{base_filename}/{channels[j]}_{i}.tiff'
             tiffile.imsave(fn, frame)
+
+def batch_convert(target_directory: str):
+    file_paths = glob.iglob(target_directory + '**/*.nd2', recursive=True)
+    files_and_sizes = ((path, os.path.getsize(path)) for path in file_paths)
+    sorted_files_with_size = sorted(files_and_sizes, key=operator.itemgetter(1))
+    tiff_directories = []
+    for fp, _ in sorted_files_with_size:
+        tiff_directories.append(nd2_convert(fp))
+    return [item for sublist in tiff_directories for item in sublist]
+
+def grab_tiff_filenames(target_directory: str):
+    return list(glob.iglob(target_directory + '**/*.tiff', recursive=True))
+
+def nd2_convert(fp: str, output_directory: str = 'data/raw_tiffs'):
+    # javabridge.start_vm(class_path=bf.JARS)
+    base_name = Path(fp).name
+    channel_dir = f'{output_directory}/{base_name}'
+    if not os.path.isdir(channel_dir):
+        os.mkdir(channel_dir)
+    md = bf.get_omexml_metadata(fp)
+    rdr = bf.ImageReader(fp, perform_init=True)
+    names, sizes, resolutions = parse_xml_metadata(md)
+    # We assume uniform shape + size for all of our input frames.
+    num_of_frames, x_dim, y_dim, channels = sizes[0]
+    for i in range(len(names)):
+        output_array = []
+        for j in range(num_of_frames):
+            blank_check = rdr.read(c=1, t=j, series=i)
+            if np.sum(blank_check) == 0:
+                continue
+            else:
+                channel_array = []
+                for k in range(channels):
+                    temp = rdr.read(c=k, t=j, series=i)
+                    channel_array.append(temp)
+                output_array.append(channel_array)
+        out_array = np.asarray(output_array)
+        if len(out_array.shape) == 4:
+            out_array = out_array.transpose(1, 0, 2, 3)
+        if len(out_array.shape) == 3:
+            out_array = out_array.transpose(1, 0, 2)
+        tiffile.imsave(f'{channel_dir}/{base_name}_{i}.tiff', out_array)
+    # javabridge.kill_vm()
+    return channel_dir
 
 
 if __name__ == '__main__':
