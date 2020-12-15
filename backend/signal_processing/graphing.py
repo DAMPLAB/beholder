@@ -25,7 +25,7 @@ from backend.signal_processing.stats import CellSignal
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-
+from numba import jit
 # ------------------------------------------------------------------------------
 def plot_histogram_notebook(input_array: np.ndarray):
     hist, bins = np.histogram(input_array)
@@ -378,7 +378,6 @@ def plot_double_histogram(processed_frame, raw_frame, axis, plot_name):
     canvas.draw()
     buf = canvas.buffer_rgba()
     return buf
-
 
 def generate_image_canvas(
         processed_frame: np.ndarray,

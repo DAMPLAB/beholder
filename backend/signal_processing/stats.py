@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 import pandas as pd
 
+from numba import jit
 
 @dataclass
 class CellSignal:
@@ -23,7 +24,7 @@ class CellSignal:
     sum_signal: float
     fluorescent_pixels: List[float]
 
-
+@jit
 def fluorescence_detection(
         grayscale_frame: np.ndarray,
         fluorescent_frame: np.ndarray,
