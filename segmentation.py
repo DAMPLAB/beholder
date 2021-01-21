@@ -87,10 +87,15 @@ def calculate_attic(
 def preprocess_initial_grey_and_find_contours(initial_frame: np.ndarray):
     # Each image transform should be giving us back an np.ndarray of the same
     # shape and size.
-    out_frame = signal_transform.percentile_threshold(initial_frame)
+    out_frame = signal_transform.lip_removal(initial_frame)
+    out_frame = signal_transform.downsample_image(out_frame)
+    out_frame = signal_transform.clahe_filter(out_frame)
+    out_frame = signal_transform.percentile_threshold(out_frame)
     out_frame = signal_transform.invert_image(out_frame)
+    out_frame = signal_transform.erosion_filter(out_frame)
     out_frame = signal_transform.remove_background(out_frame)
     out_frame = signal_transform.downsample_image(out_frame)
+    out_frame = signal_transform.unsharp_mask(out_frame)
     contours = signal_transform.find_contours(out_frame)
     return contours
 
@@ -133,9 +138,8 @@ def contour_filtration(contours):
     #  via eroding or some other mechanism. I think edge delineation is being
     #  confounded by the lack of depth in the microscopy image and the
     #  microfluidic device it's being housed in.
-    # filtered_contours = signal_transform.cellular_highpass_filter(contours)
-    # return filtered_contours
-    return contours
+    filtered_contours = signal_transform.cellular_highpass_filter(contours)
+    return filtered_contours
 
 
 def generate_mask(input_frame: np.ndarray, contours):
@@ -332,7 +336,7 @@ def enqueue_segmentation_pipeline(
 @click.command()
 @click.option(
     '--fp',
-    default='/mnt/shared/code/damp_lab/beholder/data/raw_tiffs/',
+    default='/mnt/shared/code/damp_lab/beholder/data/raw_tiffs/1-SR_2_6_6hPre-C_1hNoIPTG_16hIPTG_M9_TS_MC1.nd2',
     prompt='Filepath to Input ND2 file or TIFF Directory.'
 )
 @click.option(

@@ -17,6 +17,8 @@ from typing import (
 
 import cv2
 import numpy as np
+from skimage import filters
+
 
 
 # ------------------------------ Array Transforms ------------------------------
@@ -77,21 +79,16 @@ def invert_image(input_frame: np.ndarray) -> np.ndarray:
 
 def remove_background(
         input_frame: np.ndarray,
-        adjustment: float = 1.0,
 ) -> np.ndarray:
     '''
 
     Args:
         input_frame:
-        adjustment:
 
     Returns:
 
     '''
-    # print(f'{np.mean(input_frame)=}')
     hist, bins = np.histogram(input_frame)
-    # print(f'{bins=}')
-    background_level = np.mean(input_frame) * adjustment
     background_level = bins[0]
     return input_frame - background_level
 
@@ -394,8 +391,31 @@ def combine_frame(
         gamma,
     )
 
+def histogram_equalization(input_frame: np.ndarray):
+    out_frame = downsample_image(input_frame)
+    return cv2.equalizeHist(out_frame)
+
 
 # ----------------------------------- Filters ----------------------------------
+def erosion_filter(
+        input_frame: np.ndarray,
+        kernel_size: Tuple = (1, 1),
+        iterations: int = 1,
+):
+    '''
+
+    Args:
+        input_frame:
+        kernel_size:
+        iterations:
+
+    Returns:
+
+    '''
+    kernel = np.ones(kernel_size, np.uint8)
+    return cv2.erode(input_frame, kernel, iterations=iterations)
+
+
 def cellular_highpass_filter(contours):
     '''
 
@@ -413,7 +433,7 @@ def cellular_highpass_filter(contours):
         # TODO: This hardcoded value is due to large congregations of cells
         #   causing the bins to skew hella right tailed. Should be able to switch
         #   back to histogramic filtering once that's all figured out.
-        if c_area > 100:
+        if 10 < c_area < 100:
             out_list.append(c_value)
     return out_list
 
@@ -435,6 +455,24 @@ def device_highpass_filter(
     filter = bin_edges[selection_threshold]
     out_frame = input_frame > filter
     return out_frame, np.median(out_frame)
+
+def lip_removal(input_frame: np.ndarray):
+    out_array = filters.threshold_multiotsu(input_frame)
+    regions = np.digitize(input_frame, bins=out_array)
+    baseline_mask = ~np.array(regions, dtype=bool)
+    background_signal = np.median(input_frame[baseline_mask])
+    out_array = np.insert(out_array, 0, 0)
+    for i in range(len(out_array)):
+        if not i:
+            continue
+        med_signal = out_array[i]
+        downshift_delta = abs(med_signal-background_signal)+background_signal
+        for j in range(input_frame.shape[0]):
+            for k in range(input_frame.shape[1]):
+                if regions[j][k] == i:
+                    input_frame[j][k] = input_frame[j][k] - downshift_delta
+    return regions
+
 
 
 def mask_recalculation_check(
@@ -463,6 +501,13 @@ def normalize_subsection(
     input_frame[mask_frame] = clip_value
     return input_frame
 
+def clahe_filter(
+        input_frame: np.ndarray,
+        clip_limit: float = 2.0,
+        tile_size: Tuple = (32, 32),
+):
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
+    return clahe.apply(input_frame)
 
 # -------------------------------- Subselection  -------------------------------
 def ghetto_submatrix_application(
