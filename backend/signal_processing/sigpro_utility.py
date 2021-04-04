@@ -533,19 +533,23 @@ def batch_convert(target_directory: str):
     return [item for sublist in tiff_directories for item in sublist]
 
 def grab_tiff_filenames(target_directory: str):
-    return list(glob.iglob(target_directory + '**/*.tiff', recursive=True))
+    thing = list(glob.iglob(target_directory + '**/*.tiff', recursive=True))
+    return thing
 
 def nd2_convert(fp: str, output_directory: str = 'data/raw_tiffs'):
-    # javabridge.start_vm(class_path=bf.JARS)
+    javabridge.start_vm(class_path=bf.JARS)
     base_name = Path(fp).name
     channel_dir = f'{output_directory}/{base_name}'
     if not os.path.isdir(channel_dir):
         os.mkdir(channel_dir)
     md = bf.get_omexml_metadata(fp)
+    import pdb
+    print(1)
     rdr = bf.ImageReader(fp, perform_init=True)
     names, sizes, resolutions = parse_xml_metadata(md)
     # We assume uniform shape + size for all of our input frames.
     num_of_frames, x_dim, y_dim, channels = sizes[0]
+    print(2)
     for i in range(len(names)):
         output_array = []
         for j in range(num_of_frames):
@@ -559,6 +563,7 @@ def nd2_convert(fp: str, output_directory: str = 'data/raw_tiffs'):
                     channel_array.append(temp)
                 output_array.append(channel_array)
         out_array = np.asarray(output_array)
+        print(len(out_array.shape))
         if len(out_array.shape) == 4:
             out_array = out_array.transpose(1, 0, 2, 3)
         if len(out_array.shape) == 3:
@@ -566,7 +571,3 @@ def nd2_convert(fp: str, output_directory: str = 'data/raw_tiffs'):
         tiffile.imsave(f'{channel_dir}/{base_name}_{i}.tiff', out_array)
     # javabridge.kill_vm()
     return channel_dir
-
-
-if __name__ == '__main__':
-    resize_gif('WithoutFilterRemoval.gif')

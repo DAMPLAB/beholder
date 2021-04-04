@@ -7,32 +7,27 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
-import csv
-from collections import deque
-import click
 import copy
+import csv
 import datetime
+import gc
 import multiprocessing as mp
 import os
-import shutil
+import warnings
+from collections import deque
+from itertools import islice
+from multiprocessing import Pool
+from pathlib import Path
 from typing import (
     List,
-    Optional,
     Tuple,
 )
-import warnings
-from functools import partial
-from itertools import repeat, islice
-from multiprocessing import Pool, freeze_support
-from pathlib import Path
-import gc
+
+import click
 import imageio
-import numpy as np
-import pandas as pd
-import tqdm
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 import matplotlib.pyplot as plt
+import numpy as np
+import tqdm
 
 from backend.signal_processing import (
     signal_transform,
@@ -40,7 +35,6 @@ from backend.signal_processing import (
     graphing,
     stats,
 )
-from memory_profiler import profile
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -87,14 +81,14 @@ def calculate_attic(
 def preprocess_initial_grey_and_find_contours(initial_frame: np.ndarray):
     # Each image transform should be giving us back an np.ndarray of the same
     # shape and size.
-    out_frame = signal_transform.lip_removal(initial_frame)
-    out_frame = signal_transform.downsample_image(out_frame)
+    # out_frame = signal_transform.lip_removal(initial_frame)
+    out_frame = signal_transform.downsample_image(initial_frame)
     out_frame = signal_transform.clahe_filter(out_frame)
     out_frame = signal_transform.percentile_threshold(out_frame)
     out_frame = signal_transform.invert_image(out_frame)
     out_frame = signal_transform.erosion_filter(out_frame)
     out_frame = signal_transform.remove_background(out_frame)
-    out_frame = signal_transform.downsample_image(out_frame)
+    out_frame = signal_transform.normalize_frame(out_frame)
     out_frame = signal_transform.unsharp_mask(out_frame)
     contours = signal_transform.find_contours(out_frame)
     return contours
@@ -134,10 +128,6 @@ def preprocess_color_channel(
 
 
 def contour_filtration(contours):
-    # TODO: We then need to refine our approach in terms of segmentation either
-    #  via eroding or some other mechanism. I think edge delineation is being
-    #  confounded by the lack of depth in the microscopy image and the
-    #  microfluidic device it's being housed in.
     filtered_contours = signal_transform.cellular_highpass_filter(contours)
     return filtered_contours
 
@@ -235,24 +225,13 @@ def enqueue_segmentation_pipeline(
         f_index: int,
         render_videos: bool,
 ):
-    if os.path.getsize(input_frames) < 400:
-        return
     input_frames = sigpro_utility.ingress_tiffs(input_frames)
-    # channel_lengths = int(len(input_frames)/len(channel_names))
-    channel_lengths = 3
-    frames = []
+    if input_frames.shape[0] != 3:
+        return
     grey = input_frames[0]
     red = input_frames[1]
     green = input_frames[2]
     input_frames = list(zip(grey, red, green))
-    # for i in range(0, channel_lengths):
-    #     frames.append(
-    #         tuple([
-    #             input_frames[i],
-    #             input_frames[i+channel_lengths],
-    #             input_frames[i+(channel_lengths*2)]])
-    #     )
-    # input_frames = frames
     final_frame = []
     frame_count = len(input_frames)
     empty_stats = [[(0, 0, 0), (0, 0, 0)]] * frame_count
@@ -336,7 +315,7 @@ def enqueue_segmentation_pipeline(
 @click.command()
 @click.option(
     '--fp',
-    default='/mnt/shared/code/damp_lab/beholder/data/raw_tiffs/1-SR_2_6_6hPre-C_1hNoIPTG_16hIPTG_M9_TS_MC1.nd2',
+    default='/mnt/shared/code/damp_lab/beholder/data/raw_tiffs/',
     prompt='Filepath to Input ND2 file or TIFF Directory.'
 )
 @click.option(
@@ -354,11 +333,6 @@ def segmentation_ingress(fp: str, subselection: int, render_videos: bool):
     title = (fp.split('/')[-1])[:-4]
     print(f'Loading {title}... (This may take a second)')
     frame_paths = None
-    # channel_names = None
-    # if Path(fp).suffix == '.nd2':
-    #     print('ND2 Detected. Converting into TIFF format...')
-    #     frame_paths = sigpro_utility.nd2_convert(fp)
-    #     channel_names = sigpro_utility.get_channel_names(fp)
     if os.path.isdir(fp):
         # frame_paths = sigpro_utility.batch_convert(fp)
         print('Tiff Mode Activated...')
@@ -369,7 +343,7 @@ def segmentation_ingress(fp: str, subselection: int, render_videos: bool):
         if subselection:
             frame_paths = frame_paths[:subselection]
         print(f'Starting Segmentation Pipeline..')
-        for f_index in range(0, len(frame_paths)):
+        for f_index in tqdm.tqdm(range(0, len(frame_paths))):
             frame = frame_paths[f_index]
             enqueue_segmentation_pipeline(
                 frame,
@@ -378,6 +352,7 @@ def segmentation_ingress(fp: str, subselection: int, render_videos: bool):
                 f_index,
                 render_videos,
             )
+
             print('-----')
             plt.close('all')
             gc.collect()
