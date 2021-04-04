@@ -5,7 +5,7 @@ from backend.utils.slack_messaging import slack_message
 from pathlib import Path
 import operator
 
-full_path = "/mnt/shared/data/microscopy/"
+full_path = "/media/jackson/967e3f65-43ea-4c63-bcdd-e124725e6d63/microscopy_images/"
 
 file_paths = glob.iglob(full_path + '**/*.nd2', recursive=True)
 files_and_sizes = ((path, os.path.getsize(path)) for path in file_paths)

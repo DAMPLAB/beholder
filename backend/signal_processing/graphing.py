@@ -37,7 +37,7 @@ def plot_histogram_notebook(input_array: np.ndarray):
 
 def plot_notebook(input_array: np.ndarray):
     plt.imshow(input_array, cmap='gray')
-    plt.show()
+    # plt.show()
 
 
 # ------------------------------------------------------------------------------
