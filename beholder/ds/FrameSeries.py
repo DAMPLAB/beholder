@@ -16,7 +16,7 @@ import cv2
 import nd2reader
 import numpy as np
 
-from backend.utils.logging import BLogger
+from beholder.utils.logging import BLogger
 
 VALID_FILE_EXTS = ['.nd2']
 

@@ -7,7 +7,6 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
-import datetime
 import glob
 import math
 import operator
@@ -26,7 +25,7 @@ from pims import ND2_Reader as nd2_sdk
 from PIL import Image
 import tqdm
 import tiffile
-from backend.utils.slack_messaging import slack_message
+from beholder.utils.slack_messaging import slack_message
 
 # javabridge.start_vm(class_path=bf.JARS)
 
@@ -543,8 +542,6 @@ def nd2_convert(fp: str, output_directory: str = 'data/raw_tiffs'):
     if not os.path.isdir(channel_dir):
         os.mkdir(channel_dir)
     md = bf.get_omexml_metadata(fp)
-    import pdb
-    print(1)
     rdr = bf.ImageReader(fp, perform_init=True)
     names, sizes, resolutions = parse_xml_metadata(md)
     # We assume uniform shape + size for all of our input frames.

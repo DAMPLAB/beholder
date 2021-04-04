@@ -7,9 +7,7 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
-import copy
 
-from fractions import Fraction
 import random as rng
 from typing import (
     List,
@@ -20,12 +18,10 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-import matplotlib.figure as m_figure
-from backend.signal_processing.stats import CellSignal
-from PIL import Image, ImageDraw, ImageFont
+from beholder.signal_processing import CellSignal
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-from numba import jit
+
 # ------------------------------------------------------------------------------
 def plot_histogram_notebook(input_array: np.ndarray):
     hist, bins = np.histogram(input_array)

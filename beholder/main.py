@@ -10,7 +10,6 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 import copy
 import csv
 import datetime
-import gc
 import multiprocessing as mp
 import os
 import warnings
@@ -25,16 +24,13 @@ from typing import (
 
 import click
 import imageio
-import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 
-from backend.signal_processing import (
-    signal_transform,
-    sigpro_utility,
+from beholder.signal_processing import (
     graphing,
-    stats,
 )
+from beholder.signal_processing import sigpro_utility, stats, signal_transform
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -311,12 +307,16 @@ def enqueue_segmentation_pipeline(
         imageio.mimsave(f'{output_directory}/{f_index}_video.gif', final_output)
 
 
-# /mnt/shared/data/microscopy/4-SR_1_9_16hIPTG_6hM9_TS_MC5.nd2
 @click.command()
 @click.option(
-    '--fp',
-    default='/mnt/shared/code/damp_lab/beholder/data/raw_tiffs/',
+    '--input_directory',
+    default=f'{Path().absolute()}/data/raw_tiffs/',
     prompt='Filepath to Input ND2 file or TIFF Directory.'
+)
+@click.option(
+    '--output_directory',
+    default=f'{Path().absolute()}/output',
+    prompt='Filepath to Output Directory.'
 )
 @click.option(
     '--subselection',
@@ -325,37 +325,71 @@ def enqueue_segmentation_pipeline(
            'performed on all frames'
 )
 @click.option(
+    '--overwrite',
+    default=False,
+    prompt='If True, will overwrite previously generated files.'
+)
+@click.option(
+    '--conversion',
+    default=False,
+    prompt='If True, will convert ND2 Files to Tiffs.'
+)
+
+@click.option(
     '--render_videos',
     default=True,
     prompt='Render Output Videos'
 )
-def segmentation_ingress(fp: str, subselection: int, render_videos: bool):
-    title = (fp.split('/')[-1])[:-4]
+
+def segmentation_ingress(
+        input_directory: str,
+        output_directory: str,
+        subselection: int,
+        overwrite: bool,
+        conversion: bool,
+        render_videos: bool,
+):
+    """
+
+    Args:
+        input_directory:
+        output_directory:
+        subselection:
+        overwrite:
+        render_videos:
+
+    Returns:
+
+    """
+    title = Path(input_directory).stem
     print(f'Loading {title}... (This may take a second)')
     frame_paths = None
-    if os.path.isdir(fp):
+    # TODO: This is one of those things that's going to be a hassle to maintain.
+    # Maybe I add a CLI Input to this? Ala Typer or similar.
+    if not os.path.isdir(input_directory):
+        raise RuntimeError('Input Location expected to be a directory.')
         # frame_paths = sigpro_utility.batch_convert(fp)
-        print('Tiff Mode Activated...')
-        frame_paths = sigpro_utility.grab_tiff_filenames(fp)
-        channel_names = ['PhlC', 'm-Cherry', 'YFP']
-    if frame_paths is not None:
-        print(f'Loading Complete!')
-        if subselection:
-            frame_paths = frame_paths[:subselection]
-        print(f'Starting Segmentation Pipeline..')
-        for f_index in tqdm.tqdm(range(0, len(frame_paths))):
-            frame = frame_paths[f_index]
-            enqueue_segmentation_pipeline(
-                frame,
-                f'{Path(frame).name.split(".")[0]}',
-                channel_names,
-                f_index,
-                render_videos,
-            )
-
-            print('-----')
-            plt.close('all')
-            gc.collect()
+    # I'm just going to assume overwrite.
+    frame_paths = sigpro_utility.grab_tiff_filenames(input_directory)
+    channel_names = ['PhlC', 'm-Cherry', 'YFP']
+    # if frame_paths is not None:
+    #     print(f'Loading Complete!')
+    #     if subselection:
+    #         frame_paths = frame_paths[:subselection]
+    #     print(f'Starting Segmentation Pipeline..')
+    #     for f_index in tqdm.tqdm(range(0, len(frame_paths))):
+    #         frame = frame_paths[f_index]
+    #         enqueue_segmentation_pipeline(
+    #             frame,
+    #             f'{Path(frame).name.split(".")[0]}',
+    #             channel_names,
+    #             f_index,
+    #             render_videos,
+    #         )
+    #
+    #         print('-----')
+    #         plt.close('all')
+    #         gc.collect()
 
 
 if __name__ == '__main__':

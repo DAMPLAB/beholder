@@ -9,110 +9,238 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 '''
 import random as rng
 from typing import (
+    Dict,
     List,
     Tuple,
+    Optional,
 )
 
 import cv2
 import numpy as np
+import yaml
+from .FrameSeries import FrameSeries, retrieve_frame
+from beholder.utils.logging import BLogger
+
+LOG = BLogger()
 
 
+async def instantiate_from_yaml():
+    pl = Pipeline()
+    pl.parse_config()
 
-# ------------------------------ Image Processing ------------------------------
-def downsample_image(input_node: np.ndarray) -> np.ndarray:
+
+async def run_channel_pipeline():
+    pl = Pipeline()
+    await pl.run_channel_pipeline('YFP', 0, 0, 0)
+
+
+class SingletonBaseClass(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        """
+        Possible changes to the value of the `__init__` argument do not affect
+        the returned instance.
+        """
+        if cls not in cls._instances:
+            instance = super().__call__(*args, **kwargs)
+            cls._instances[cls] = instance
+        return cls._instances[cls]
+
+
+class Pipeline(metaclass=SingletonBaseClass):
+
+    def __init__(self):
+        self.transform_sequence = None
+        self.pipeline_lut = {
+            'downsample': downsample_image,
+            'normalize': normalize_frame,
+            'percentile_threshold': percentile_threshold,
+            'invert': invert_image,
+            'remove_background': remove_background,
+            'kernel_smoothing': kernel_smoothing,
+            'unsharp_mask': unsharp_mask,
+            'find_contours': find_contours,
+            'gaussian_blur': gaussian_blur,
+            'laplacian_operator': laplacian_operator,
+            'otsu_thresholding': otsu_thresholding,
+            'canny': auto_canny,
+            'pyramid_mean_shift': pyramid_mean_shift,
+            'modify_contrast': modify_contrast,
+            'apply_brightness_contrast': apply_brightness_contrast,
+        }
+        self.channel_to_pipeline_map = {}
+
+    def parse_config(self, fp: str = 'settings.yaml'):
+        with open(fp) as input_config:
+            config = yaml.load(input_config, Loader=yaml.FullLoader)
+            LOG.info(config)
+            pre_config = config['preprocess_pipeline']
+            for channel_entry in pre_config:
+                LOG.info(pre_config)
+                LOG.info(channel_entry)
+                descriptor = pre_config[channel_entry]
+                if type(descriptor) == str:
+                    self.register_operation(
+                        channel_entry,
+                        descriptor,
+                        {}
+                    )
+                if type(descriptor) == dict:
+                    self.register_operation(
+                        channel_entry,
+                        descriptor,
+                        **descriptor,
+                    )
+
+    def register_operation(
+            self,
+            channel_name: str,
+            operation_name: str,
+            params: Optional[Dict] = None,
+    ):
+        # Get the currently active frame_series
+        fs = FrameSeries()
+        if fs.frame_sets is None:
+            LOG.warning('No Frames currently loaded.')
+            return
+        for channel in fs.channels:
+            if channel not in self.channel_to_pipeline_map:
+                self.channel_to_pipeline_map[channel] = {}
+            else:
+                continue
+        # This assumes that you don't double
+        active_pl = self.channel_to_pipeline_map[channel_name]
+        current_pl_index = len(active_pl)
+        function_entry = {
+            'function': operation_name,
+            'params': params if params else {}
+        }
+        active_pl[current_pl_index] = function_entry
+
+    async def run_channel_pipeline(
+            self,
+            channel_name: str,
+            fov_num: int,
+            frame_num: int,
+            channel_num: int,
+    ):
+        active_pl = None
+        try:
+            active_pl = self.channel_to_pipeline_map[channel_name]
+        except KeyError:
+            LOG.warning(f'Unable to find channel pipeline for {channel_name}')
+        active_frame = await retrieve_frame(fov_num, frame_num, channel_num)
+        for function_entry in active_pl:
+            function_entry = active_pl[function_entry]
+            func = function_entry['function']
+            params = function_entry['params']
+            active_frame = func(active_frame, **params)
+        return active_frame
+
+    def run_xy_pipeline(
+            self,
+            fov_num,
+    ):
+        pass
+
+        # Check to see if the key exits, if the key does not exist create it.
+        #
+
+
+# ------------------------------ Array Transforms ------------------------------
+def downsample_image(input_frame: np.ndarray) -> np.ndarray:
     '''
     Downsamples a 16bit input image to an 8bit image. Will result in loss
     of signal fidelity due to loss of precision.
 
     Args:
-        input_node: Input numpy array
+        input_frame: Input numpy array
 
     Returns:
         Downsampled ndarray
     '''
-    return (input_node / 256).astype('uint8')
+    return (input_frame / 256).astype('uint8')
 
 
-def normalize_frame(input_node: np.ndarray) -> np.ndarray:
+def normalize_frame(input_frame: np.ndarray) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
 
     Returns:
 
     '''
-    return (255 * input_node / np.max(input_node)).astype(np.uint8)
+    return (255 * input_frame / np.max(input_frame)).astype(np.uint8)
 
 
-def percentile_threshold(
-        input_node: np.ndarray,
-        low_th: int = 1,
-        high_th: int = 98,
-) -> np.ndarray:
+def percentile_threshold(input_frame, low_th=1, high_th=98) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
         low_th:
         high_th:
 
     Returns:
 
     '''
-    low_threshold = np.percentile(input_node, low_th)
-    high_threshold = np.percentile(input_node, high_th)
-    ret, thresh = cv2.threshold(input_node, low_threshold, high_threshold, 0)
+    low_threshold = np.percentile(input_frame, low_th)
+    high_threshold = np.percentile(input_frame, high_th)
+    ret, thresh = cv2.threshold(input_frame, low_threshold, high_threshold, 0)
     return thresh
 
 
-def invert_image(input_node: np.ndarray) -> np.ndarray:
+def invert_image(input_frame: np.ndarray) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
 
     Returns:
 
     '''
-    return np.invert(input_node)
+    return np.invert(input_frame)
 
 
 def remove_background(
-        input_node: np.ndarray,
+        input_frame: np.ndarray,
         adjustment: float = 1.0,
 ) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
         adjustment:
 
     Returns:
 
     '''
-    hist, bins = np.histogram(input_node)
-    background_level = np.mean(input_node) * adjustment
+    # print(f'{np.mean(input_frame)=}')
+    hist, bins = np.histogram(input_frame)
+    # print(f'{bins=}')
+    background_level = np.mean(input_frame) * adjustment
     background_level = bins[0]
-    return input_node - background_level
+    return input_frame - background_level
 
 
-def kernel_smoothing(input_node: np.ndarray, k_size: int = 9) -> np.ndarray:
+def kernel_smoothing(input_frame: np.ndarray, k_size: int = 9) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
         k_size:
 
     Returns:
 
     '''
     kernel = np.array([[-1, -1, -1], [-1, k_size, -1], [-1, -1, -1]])
-    return cv2.filter2D(input_node, -1, kernel)
+    return cv2.filter2D(input_frame, -1, kernel)
 
 
 def unsharp_mask(
-        input_node: np.ndarray,
+        input_frame: np.ndarray,
         kernel_size: Tuple[int, int] = (5, 5),
         sigma: float = 1.0,
         amount: float = 1.0,
@@ -122,7 +250,7 @@ def unsharp_mask(
     Return a sharpened version of the image, using an unsharp mask.
 
     Args:
-        input_node:
+        input_frame:
         kernel_size:
         sigma:
         amount:
@@ -131,28 +259,28 @@ def unsharp_mask(
     Returns:
 
     '''
-    blurred = cv2.GaussianBlur(input_node, kernel_size, sigma)
-    sharpened = float(amount + 1) * input_node - float(amount) * blurred
+    blurred = cv2.GaussianBlur(input_frame, kernel_size, sigma)
+    sharpened = float(amount + 1) * input_frame - float(amount) * blurred
     sharpened = np.maximum(sharpened, np.zeros(sharpened.shape))
     sharpened = np.minimum(sharpened, 255 * np.ones(sharpened.shape))
     sharpened = sharpened.round().astype(np.uint8)
     if threshold > 0:
-        low_contrast_mask = np.absolute(input_node - blurred) < threshold
-        np.copyto(sharpened, input_node, where=low_contrast_mask)
+        low_contrast_mask = np.absolute(input_frame - blurred) < threshold
+        np.copyto(sharpened, input_frame, where=low_contrast_mask)
     return sharpened
 
 
-def find_contours(input_node: np.ndarray) -> np.ndarray:
+def find_contours(input_frame: np.ndarray) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
 
     Returns:
 
     '''
     contours, hierarchy = cv2.findContours(
-        input_node,
+        input_frame,
         cv2.RETR_TREE,
         cv2.CHAIN_APPROX_NONE,
     )
@@ -186,106 +314,106 @@ def draw_convex_hull(
     return drawing
 
 
-def gaussian_blur(input_node: np.ndarray, kernel: int = 3) -> np.ndarray:
+def gaussian_blur(input_frame: np.ndarray, kernel: int = 3) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
         kernel:
 
     Returns:
 
     '''
-    return cv2.GaussianBlur(input_node, (kernel, kernel), 0)
+    return cv2.GaussianBlur(input_frame, (kernel, kernel), 0)
 
 
-def laplacian_operator(input_node: np.ndarray) -> np.ndarray:
+def laplacian_operator(input_frame: np.ndarray) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
 
     Returns:
 
     '''
-    return cv2.Laplacian(input_node, cv2.CV_64F, ksize=3)
+    return cv2.Laplacian(input_frame, cv2.CV_64F, ksize=3)
 
 
-def otsu_thresholding(input_node: np.ndarray) -> np.ndarray:
+def otsu_thresholding(input_frame: np.ndarray) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
 
     Returns:
 
     '''
-    blur = cv2.GaussianBlur(input_node, (3, 3), 0)
+    blur = cv2.GaussianBlur(input_frame, (3, 3), 0)
     ret3, th3 = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return th3
 
 
-def auto_canny(input_node: np.ndarray, sigma: float = 0.01) -> np.ndarray:
+def auto_canny(input_frame: np.ndarray, sigma: float = 0.01) -> np.ndarray:
     '''
 
     Args:
-        input_node:
+        input_frame:
         sigma:
 
     Returns:
 
     '''
     # compute the median of the single channel pixel intensities
-    v = np.median(input_node)
+    v = np.median(input_frame)
     # apply automatic Canny edge detection using the computed median
     lower = int(max(0, (1.0 - sigma) * v))
     upper = int(min(255, (1.0 + sigma) * v))
-    return cv2.Canny(input_node, lower, upper)
+    return cv2.Canny(input_frame, lower, upper)
 
 
 def pyramid_mean_shift(
-        input_node: np.ndarray,
+        input_frame: np.ndarray,
         lower: int = 21,
         upper: int = 51,
 ):
     '''
 
     Args:
-        input_node:
+        input_frame:
         lower:
         upper:
 
     Returns:
 
     '''
-    return cv2.pyrMeanShiftFiltering(input_node, lower, upper)
+    return cv2.pyrMeanShiftFiltering(input_frame, lower, upper)
 
 
-def colorize_frame(input_node: np.ndarray, color: str) -> np.ndarray:
+def colorize_frame(input_frame: np.ndarray, color: str) -> np.ndarray:
     '''
     Converts a 1-Channel Grayscale Image to RGB Space and then converts the
     prior image to a singular color.
 
     Args:
-        input_node: Input numpy array
+        input_frame: Input numpy array
         color: (red|blue|green) What color to convert to:
 
     Returns:
         Colorized ndarray
 
     '''
-    input_node = cv2.cvtColor(input_node, cv2.COLOR_GRAY2RGB)
+    input_frame = cv2.cvtColor(input_frame, cv2.COLOR_GRAY2RGB)
     if color == 'green':
-        input_node[:, :, (0, 2)] = 0
+        input_frame[:, :, (0, 2)] = 0
     if color == 'blue':
-        input_node[:, :, (0, 1)] = 0
+        input_frame[:, :, (0, 1)] = 0
     if color == 'red':
-        input_node[:, :, (1, 2)] = 0
-    return input_node
+        input_frame[:, :, (1, 2)] = 0
+    return input_frame
 
 
 def modify_contrast(
-        input_node: np.ndarray,
+        input_frame: np.ndarray,
         alpha: int = 5,
         gamma: int = 127,
 ):
@@ -295,7 +423,7 @@ def modify_contrast(
     gamma is a straight increase to the intensity.
 
     Args:
-        input_node: Input numpy array
+        input_frame: Input numpy array
         alpha: Alpha Value
         gamma: Gamma Value
 
@@ -304,16 +432,16 @@ def modify_contrast(
 
     '''
     return cv2.addWeighted(
-        input_node,
+        input_frame,
         alpha,
-        input_node,
+        input_frame,
         0,
         gamma,
     )
 
 
 def apply_brightness_contrast(
-        input_node: np.ndarray,
+        input_frame: np.ndarray,
         alpha=12.0,
         beta=0,
 ):
@@ -324,7 +452,7 @@ def apply_brightness_contrast(
     and beta is brightness
 
     Args:
-        input_node: Input numpy array
+        input_frame: Input numpy array
         alpha: Alpha Value
         beta: Beta Value
 
@@ -333,13 +461,13 @@ def apply_brightness_contrast(
 
     '''
     return cv2.convertScaleAbs(
-        input_node,
+        input_frame,
         alpha=alpha,
         beta=beta,
     )
 
 
-def empty_frame_check(input_node: np.ndarray) -> bool:
+def empty_frame_check(input_frame: np.ndarray) -> bool:
     '''
     Checks to see if the inputted frame is empty.
 
@@ -351,21 +479,21 @@ def empty_frame_check(input_node: np.ndarray) -> bool:
     of stride.
 
     Args:
-        input_node: Input numpy array
+        input_frame: Input numpy array
 
     Returns:
         Whether or not the frame is 'emtpy'
 
     '''
-    nan_converted_frame = np.nan_to_num(input_node)
+    nan_converted_frame = np.nan_to_num(input_frame)
     if np.sum(nan_converted_frame) == 0:
         return True
     return False
 
 
 def combine_frame(
-        input_node_one: np.ndarray,
-        input_node_two: np.ndarray,
+        input_frame_one: np.ndarray,
+        input_frame_two: np.ndarray,
         alpha: int = 1,
         beta: float = 0.25,
         gamma: float = 0,
@@ -373,8 +501,8 @@ def combine_frame(
     '''
 
     Args:
-        input_node_one:
-        input_node_two:
+        input_frame_one:
+        input_frame_two:
         alpha:
         beta:
         gamma:
@@ -383,7 +511,7 @@ def combine_frame(
 
     '''
     # I assume we're never going to create greyscale on greyscale stacks
-    frame_list = [input_node_one, input_node_two]
+    frame_list = [input_frame_one, input_frame_two]
     for idx, frame in enumerate(frame_list):
         if len(frame.shape) < 3:
             frame_list[idx] = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
@@ -507,25 +635,3 @@ def crop_from_points(
         p1: Tuple[int, int],
 ):
     return input_frame[p0[0]:p1[0], p0[1]:p1[1]]
-
-
-operations_list = {
-    'Downsample Image': downsample_image,
-    'Normalize Frame': normalize_frame,
-    'Percentile Threshold': percentile_threshold,
-    'Invert Image': invert_image,
-    'Remove Background': remove_background,
-    'Kernel Smoothing': kernel_smoothing,
-    'Unsharpen Mask': unsharp_mask,
-    'Gaussian Blur': gaussian_blur,
-    'Laplacian Operator': laplacian_operator,
-    'Otsu Thresholding': otsu_thresholding,
-    'Auto Canard': auto_canny,
-    'Pyramid Mean Shift': pyramid_mean_shift,
-    'Colorize Frame': colorize_frame,
-    'Modify Contrast': modify_contrast,
-    'Apply Brightness Contrast': apply_brightness_contrast,
-    'Combine Frame': combine_frame,
-
-}
-
