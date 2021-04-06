@@ -7,10 +7,6 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
-from .graphing import (
-    draw_mask,
-    label_cells,
-)
 from .signal_transform import (
     downsample_image,
     normalize_frame,
@@ -26,6 +22,12 @@ from .signal_transform import (
     otsu_thresholding,
     auto_canny,
     pyramid_mean_shift,
+    clahe_filter,
+    erosion_filter,
+    apply_brightness_contrast,
+    colorize_frame,
+    cellular_highpass_filter,
+    combine_frame,
 )
 from .sigpro_utility import (
     open_microscopy_image,
@@ -35,4 +37,9 @@ from .sigpro_utility import (
 from .stats import (
     CellSignal,
     fluorescence_detection,
+    generate_arbitrary_stats,
+)
+from .graphing import (
+    draw_mask,
+    label_cells,
 )

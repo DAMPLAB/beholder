@@ -221,7 +221,7 @@ def enqueue_segmentation_pipeline(
         f_index: int,
         render_videos: bool,
 ):
-    input_frames = sigpro_utility.ingress_tiffs(input_frames)
+    input_frames = sigpro_utility.ingress_tiff_file(input_frames)
     if input_frames.shape[0] != 3:
         return
     grey = input_frames[0]
