@@ -24,7 +24,15 @@ class CellSignal:
     sum_signal: float
     fluorescent_pixels: List[float]
 
-@jit
+
+@dataclass
+class CellStats:
+    raw_signal: float
+    median_signal: float
+    std_dev: float
+    filtered_len: int
+
+
 def fluorescence_detection(
         grayscale_frame: np.ndarray,
         fluorescent_frame: np.ndarray,
@@ -66,6 +74,38 @@ def fluorescence_detection(
             )
             cell_signals.append(new_cell)
     return cell_signals
+
+
+def generate_arbitrary_stats(
+        cell_stats: List[List[CellSignal]],
+):
+    '''
+
+    Args:
+        cell_stats:
+        c2_cell_stats:
+
+    Returns:
+
+    '''
+    out_list = []
+    for cell_set in cell_stats:
+        raw_signal = [cell_st.sum_signal for cell_st in cell_set]
+        hist, bins = np.histogram(raw_signal, bins=100)
+        bin_limit = bins[3]
+        filtered_set = list(filter(lambda x: x.sum_signal < bin_limit, cell_set))
+        f_signal = [fil_st.sum_signal for fil_st in filtered_set]
+        median_signal = np.median(f_signal)
+        std_dev = np.std(f_signal)
+        inner_cell_stats = CellStats(
+            raw_signal=raw_signal,
+            median_signal=median_signal,
+            std_dev=std_dev,
+            filtered_len=len(filtered_set),
+        )
+        out_list.append(inner_cell_stats)
+    return out_list
+
 
 
 def generate_frame_stats(

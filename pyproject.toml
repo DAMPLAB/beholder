@@ -41,6 +41,10 @@ torch = "^1.7.1"
 torchvision = "^0.8.2"
 nnunet = "^1.6.6"
 hiddenlayer = "^0.3"
+rich = "^10.1.0"
+typer = "^0.3.2"
+simple-term-menu = "^1.0.0"
+xmltodict = "^0.12.0"
 
 
 [tool.poetry.dev-dependencies]

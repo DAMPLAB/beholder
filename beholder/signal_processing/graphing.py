@@ -136,7 +136,7 @@ def label_cells(
     # Next to bounding box put
     # input_frame = np.ndarray(input_frame)
     bbox_list = []
-    c_signal = [cell_st.sum_signal for cell_st in cell_stats]
+    c_signal = sum(cell_stats.raw_signal)
     hist, bins = np.histogram(c_signal, bins=100)
     bin_limit = bins[2]
     for contour in contour_list:
@@ -144,10 +144,6 @@ def label_cells(
         bbox_list.append(cv2.boundingRect(polygon_contour))
     for i in range(len(contour_list)):
         # Going to be colorized in a subsequent call.
-        c_stats = cell_stats[i]
-        # if c_stats.sum_signal < bin_limit:
-        #     print('Hewwo')
-        # else:
         input_frame = cv2.rectangle(
             input_frame,
             (bbox_list[i][0], bbox_list[i][1]),
@@ -157,7 +153,7 @@ def label_cells(
             1)
         input_frame = write_multiline(
             input_frame,
-            f'{c_stats.sum_signal}',
+            f'{c_signal}',
             bbox_list[i][0],
             bbox_list[i][1],
         )

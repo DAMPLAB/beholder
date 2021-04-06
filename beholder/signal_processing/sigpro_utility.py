@@ -8,6 +8,7 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
 import glob
+import json
 import math
 import operator
 import os
@@ -26,8 +27,8 @@ from PIL import Image
 import tqdm
 import tiffile
 from beholder.utils.slack_messaging import slack_message
+import xmltodict
 
-# javabridge.start_vm(class_path=bf.JARS)
 
 
 # --------------------------- Utility Functionality ----------------------------
@@ -91,7 +92,7 @@ def glob_tiffs(fp: str, chunk_size: int, channel_num: int = 3):
     return master_list
 
 
-def ingress_tiffs(input_fn: str):
+def ingress_tiff_file(input_fn: str):
     tiff = tiffile.imread(input_fn)
     uint16_cast = (tiff * 65536).round().astype(np.uint16)
     return uint16_cast
@@ -507,6 +508,34 @@ def parse_xml_metadata(xml_string, array_order='tyxc'):
                                               for t in res_tags]))
     return names, sizes, resolutions
 
+def get_channel_data_from_xml_metadata(xml_tree: ETree.ElementTree):
+    metadata_root = xml_tree.getroot()
+    channel_list = []
+    for child in metadata_root:
+        inner_list = []
+        if child.tag.endswith('Image'):
+            for grandchild in child:
+                if grandchild.tag.endswith('Pixels'):
+                    for greatgrandchild in grandchild:
+                        gg_attr = greatgrandchild.attrib
+                        if 'EmissionWavelength' not in gg_attr:
+                            continue
+                        wl = gg_attr['EmissionWavelength']
+                        name = gg_attr['Name']
+                        inner_list.append([wl, name])
+        channel_list.append(inner_list)
+    # This is probably a fragile way of doing this.
+    channel_list = list(filter(lambda x: len(x), channel_list))
+    return channel_list
+
+def write_xml_metadata(xml_string: str, out_fp: str, array_order='tyxc'):
+    array_order = array_order.upper()
+    metadata_root = ETree.fromstring(xml_string)
+    # I think there might be some reordering happening behind the scenes
+    # that I don't know about.
+    out_data = ETree.tostring(metadata_root)
+    with open(out_fp, 'w') as out_file:
+        out_file.write(out_data)
 
 
 def tiff_splitter(fp: str):
@@ -535,36 +564,56 @@ def grab_tiff_filenames(target_directory: str):
     thing = list(glob.iglob(target_directory + '**/*.tiff', recursive=True))
     return thing
 
-def nd2_convert(fp: str, output_directory: str = 'data/raw_tiffs'):
-    javabridge.start_vm(class_path=bf.JARS)
-    base_name = Path(fp).name
-    channel_dir = f'{output_directory}/{base_name}'
-    if not os.path.isdir(channel_dir):
-        os.mkdir(channel_dir)
-    md = bf.get_omexml_metadata(fp)
-    rdr = bf.ImageReader(fp, perform_init=True)
-    names, sizes, resolutions = parse_xml_metadata(md)
+def disable_bioformats_logging():
+    rootLoggerName = javabridge.get_static_field("org/slf4j/Logger",
+                                         "ROOT_LOGGER_NAME",
+                                         "Ljava/lang/String;")
+
+    rootLogger = javabridge.static_call("org/slf4j/LoggerFactory",
+                                "getLogger",
+                                "(Ljava/lang/String;)Lorg/slf4j/Logger;",
+                                rootLoggerName)
+
+    logLevel = javabridge.get_static_field("ch/qos/logback/classic/Level",
+                                   "WARN",
+                                   "Lch/qos/logback/classic/Level;")
+
+    javabridge.call(rootLogger,
+            "setLevel",
+            "(Lch/qos/logback/classic/Level;)V",
+            logLevel)
+
+def nd2_convert(fp: str, output_directory: str):
+    disable_bioformats_logging()
+    metadata = bf.get_omexml_metadata(fp)
+    image_reader = bf.ImageReader(fp, perform_init=True)
+    names, sizes, resolutions = parse_xml_metadata(metadata)
+    tiff_directory = os.path.join(output_directory, 'raw_tiffs')
+    if not os.path.exists(tiff_directory):
+        os.mkdir(tiff_directory)
     # We assume uniform shape + size for all of our input frames.
     num_of_frames, x_dim, y_dim, channels = sizes[0]
-    print(2)
-    for i in range(len(names)):
+    for i in tqdm.tqdm(range(len(names))):
         output_array = []
         for j in range(num_of_frames):
-            blank_check = rdr.read(c=1, t=j, series=i)
+            blank_check = image_reader.read(c=1, t=j, series=i)
             if np.sum(blank_check) == 0:
                 continue
             else:
                 channel_array = []
                 for k in range(channels):
-                    temp = rdr.read(c=k, t=j, series=i)
+                    temp = image_reader.read(c=k, t=j, series=i)
                     channel_array.append(temp)
                 output_array.append(channel_array)
         out_array = np.asarray(output_array)
-        print(len(out_array.shape))
         if len(out_array.shape) == 4:
             out_array = out_array.transpose(1, 0, 2, 3)
         if len(out_array.shape) == 3:
             out_array = out_array.transpose(1, 0, 2)
-        tiffile.imsave(f'{channel_dir}/{base_name}_{i}.tiff', out_array)
-    # javabridge.kill_vm()
-    return channel_dir
+        save_path = os.path.join(tiff_directory, f'{i}.tiff')
+        tiffile.imsave(save_path, out_array)
+    metadata_save_path = os.path.join(output_directory, f'metadata.xml')
+    # write_xml_metadata(metadata.decode(encoding='utf-8'), metadata_save_path)
+    with open(metadata_save_path, 'w') as out_file:
+        out_file.write(metadata)
+
