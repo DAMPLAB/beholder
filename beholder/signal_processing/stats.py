@@ -77,33 +77,35 @@ def fluorescence_detection(
 
 
 def generate_arbitrary_stats(
-        cell_stats: List[List[CellSignal]],
+        channel_stats: List[List[CellSignal]],
 ):
     '''
 
     Args:
-        cell_stats:
-        c2_cell_stats:
+        channel_stats:
 
     Returns:
 
     '''
     out_list = []
-    for cell_set in cell_stats:
-        raw_signal = [cell_st.sum_signal for cell_st in cell_set]
-        hist, bins = np.histogram(raw_signal, bins=100)
-        bin_limit = bins[3]
-        filtered_set = list(filter(lambda x: x.sum_signal < bin_limit, cell_set))
-        f_signal = [fil_st.sum_signal for fil_st in filtered_set]
-        median_signal = np.median(f_signal)
-        std_dev = np.std(f_signal)
-        inner_cell_stats = CellStats(
-            raw_signal=raw_signal,
-            median_signal=median_signal,
-            std_dev=std_dev,
-            filtered_len=len(filtered_set),
-        )
-        out_list.append(inner_cell_stats)
+    for channel_set in channel_stats:
+        channel_list = []
+        for cell_set in channel_set:
+            raw_signal = [cell_st.sum_signal for cell_st in cell_set]
+            hist, bins = np.histogram(raw_signal, bins=100)
+            bin_limit = bins[3]
+            filtered_set = list(filter(lambda x: x.sum_signal < bin_limit, cell_set))
+            f_signal = [fil_st.sum_signal for fil_st in filtered_set]
+            median_signal = np.median(f_signal)
+            std_dev = np.std(f_signal)
+            inner_cell_stats = CellStats(
+                raw_signal=raw_signal,
+                median_signal=median_signal,
+                std_dev=std_dev,
+                filtered_len=len(filtered_set),
+            )
+            channel_list.append(inner_cell_stats)
+        out_list.append(channel_list)
     return out_list
 
 

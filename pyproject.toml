@@ -45,6 +45,7 @@ rich = "^10.1.0"
 typer = "^0.3.2"
 simple-term-menu = "^1.0.0"
 xmltodict = "^0.12.0"
+boto3 = "^1.17.46"
 
 
 [tool.poetry.dev-dependencies]

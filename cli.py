@@ -17,12 +17,15 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 import copy
 import csv
 import dataclasses
+import functools
 import glob
 import multiprocessing as mp
 import operator
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import subprocess
+import sys
 from typing import (
     List,
     Tuple,
@@ -72,7 +75,7 @@ COLOR_LUT = {
     'DAPI1': 'blue',
     'YFP': 'yellow',
 }
-DEBUG = False
+DEBUG = True
 
 
 # ------------------------------- Datastructures -------------------------------
@@ -216,7 +219,7 @@ def segmentation_pipeline(
                 color,
             )
             aux_frame_container.append(aux_processed_output)
-    # ------------ CORRELATING CELL CONTOURS TO FLUORESCENCE SIGNAL ------------
+        # ------------ CORRELATING CELL CONTOURS TO FLUORESCENCE SIGNAL ------------
         for aux_channel_index in range(auxiliary_channels.shape[0]):
             aux_frame = auxiliary_channels[aux_channel_index][frame_index]
             correlated_cells = fluorescence_detection(
@@ -224,11 +227,11 @@ def segmentation_pipeline(
                 aux_frame,
                 prime_contours,
             )
-            packaged_tiff.cell_signal_auxiliary_frames.append(correlated_cells)
+            packaged_tiff.cell_signal_auxiliary_frames[aux_channel_index].append(correlated_cells)
         frame_stats = generate_arbitrary_stats(
             packaged_tiff.cell_signal_auxiliary_frames
         )
-    # ----------------- LABELING FRAMES WITH DETECTED SIGNALS ------------------
+        # ----------------- LABELING FRAMES WITH DETECTED SIGNALS ------------------
         aux_labeled_frame = []
         for aux_channel_index in range(auxiliary_channels.shape[0]):
             aux_frame = auxiliary_channels[aux_channel_index][frame_index]
@@ -239,7 +242,7 @@ def segmentation_pipeline(
             )
             aux_labeled_frame.append(out_label)
         packaged_tiff.labeled_auxiliary_frames.append(aux_labeled_frame)
-    # ----------------- COMBINING FRAMES FOR VISUALIZATION  ------------------
+        # ----------------- COMBINING FRAMES FOR VISUALIZATION  ------------------
         out_frame = primary_frame
         for aux_channel_index in range(auxiliary_channels.shape[0]):
             aux_frame = auxiliary_channels[aux_channel_index][frame_index]
@@ -298,17 +301,19 @@ def enqueue_segmentation(input_fp: str):
             )
         )
     else:
-        with mp.Pool(PROCESSES) as p:
+        with mp.get_context("spawn").Pool(processes=PROCESSES) as pool:
             segmentation_results = list(
                 tqdm.tqdm(
-                    p.imap(segmentation_pipeline, packaged_tiffs),
+                    pool.imap(segmentation_pipeline, packaged_tiffs),
                     total=len(packaged_tiffs)
                 )
             )
-
+    # ------------------- EXIT GRACEFULLY IF SEGMENTATION FAILED  --------------
+    if not segmentation_results:
+        return
     # ----------------------- ENSURE OUTPUT DIRECTORY EXISTS  ------------------
     for frame in range(len(segmentation_results)):
-        frame_output = os.path.join(output_location, f'{frame+1}')
+        frame_output = os.path.join(output_location, f'{frame + 1}')
         if not os.path.exists(frame_output):
             os.mkdir(frame_output)
         for index, channel in enumerate(
@@ -329,6 +334,25 @@ def enqueue_segmentation(input_fp: str):
                 writer.writerow([i.sum_signal for i in channel_result])
 
 
+def filter_inputs_based_on_channel(
+        input_directory: str,
+        filter_criteria: int = 2,
+) -> bool:
+    """
+
+    Args:
+        input_directory:
+        filter_criteria:
+
+    Returns:
+
+    """
+    metadata_filepath = os.path.join(input_directory, 'metadata.xml')
+    tree = ET.parse(metadata_filepath)
+    channels = get_channel_data_from_xml_metadata(tree)
+    if len(channels[0]) != filter_criteria:
+        return False
+    return True
 
 
 # ---------------------------- Application Commands ----------------------------
@@ -343,6 +367,7 @@ def convert_nd2_to_tiffs(
     Args:
         input_directory:
         output_directory:
+        logging:
 
     Returns:
 
@@ -388,7 +413,19 @@ def segmentation(
         input_directory: str = '/media/prime/beholder_output',
         render_videos: bool = True,
         logging: bool = True,
+        filter_criteria: int = 3,
 ):
+    """
+
+    Args:
+        input_directory:
+        render_videos:
+        logging:
+        filter_criteria:
+
+    Returns:
+
+    """
     global RENDER_VIDEOS
     RENDER_VIDEOS = render_videos
     for dir_path in [input_directory]:
@@ -397,8 +434,13 @@ def segmentation(
     for x in os.scandir(input_directory):
         if x.is_dir:
             input_directories.append(x.path)
+    filter_fn = functools.partial(
+        filter_inputs_based_on_channel,
+        filter_criteria=filter_criteria,
+    )
+    input_directories = list((filter(filter_fn, input_directories)))
     display_directories = [Path(i).stem for i in input_directories]
-    input_directories.insert(0, 'all')
+    display_directories.insert(0, 'all')
     beholder_text('⬤ Please select input directories.')
     beholder_text(
         '-' * 88
@@ -428,13 +470,27 @@ def segmentation(
                 f'{Path(input_directory).stem}...'
             )
             beholder_text(
-                '-'*88
+                '-' * 88
             )
         enqueue_segmentation(input_directory)
     typer.Exit()
 
 
+@app.command()
+def test(
+        input_directory: str = '/media/prime/beholder_output',
+        output_bucket: str = 'beholder-output',
+):
+    beholder_text(f'⬤ Syncing {input_directory} to AWS S3 Bucket {output_bucket}.')
+    beholder_text('-' * 88)
+    cmd = ['aws', 's3', 'sync', f'{input_directory}', f's3://{output_bucket}']
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True) as proc:
+        for stdout_line in proc.stdout:
+            sys.stdout.write(f'{stdout_line}\r')
+            sys.stdout.flush()
+
+
 if __name__ == "__main__":
     javabridge.start_vm(class_path=bf.JARS)
+    mp.set_start_method("spawn")
     app()
-    print(2)
