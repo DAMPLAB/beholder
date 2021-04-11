@@ -197,6 +197,8 @@ def segmentation_pipeline(
     primary_channel = copy.copy(packaged_tiff.img_array[0])
     auxiliary_channels = copy.copy(packaged_tiff.img_array[1:])
     # ------ SPLITTING OUT THE INPUT DATASTRUCTURE AND INITIAL PROCESSING ------
+    for aux_channel_index in range(auxiliary_channels.shape[0]):
+        packaged_tiff.cell_signal_auxiliary_frames.append([])
     for frame_index in range(primary_channel.shape[0]):
         # Handle the primary frame. We use the primary frame to color stuff in.
         primary_frame = primary_channel[frame_index]
@@ -238,7 +240,7 @@ def segmentation_pipeline(
             out_label = label_cells(
                 downsample_image(aux_frame),
                 prime_contours,
-                frame_stats[aux_channel_index],
+                frame_stats[aux_channel_index][frame_index],
             )
             aux_labeled_frame.append(out_label)
         packaged_tiff.labeled_auxiliary_frames.append(aux_labeled_frame)
@@ -276,6 +278,8 @@ def enqueue_segmentation(input_fp: str):
             total=len(sorted_tiffs)
     ):
         array = ingress_tiff_file(tiff_file)
+        if not array.shape[0]:
+            continue
         wavelengths = [x[0] for x in channels[index]]
         channel_names = [x[1] for x in channels[index]]
         title = Path(tiff_file).stem
@@ -311,27 +315,19 @@ def enqueue_segmentation(input_fp: str):
     # ------------------- EXIT GRACEFULLY IF SEGMENTATION FAILED  --------------
     if not segmentation_results:
         return
-    # ----------------------- ENSURE OUTPUT DIRECTORY EXISTS  ------------------
-    for frame in range(len(segmentation_results)):
-        frame_output = os.path.join(output_location, f'{frame + 1}')
-        if not os.path.exists(frame_output):
-            os.mkdir(frame_output)
-        for index, channel in enumerate(
-                segmentation_results[frame].channel_names
-        ):
-            if channel == 'PhC':
-                continue
-            csv_location = os.path.join(frame_output, f'{frame}_{channel}.csv')
-            segmentation_results[frame].stat_file_location = csv_location
-            Path(csv_location).touch()
-
-    # ----------------------- WRITE OUT CHANNEL CSV  ------------------
+    # ---------------- ENSURE OUTPUT DIRECTORY EXISTS AND WRITE OUT  -----------
     # TODO: ENSURE THAT THIS GUY IS SETUP RIGHT. IT SHOULD BE A LIST PER CHANNEL.
     for i, result in enumerate(tqdm.tqdm(segmentation_results)):
         for j, channel_result in enumerate(result.cell_signal_auxiliary_frames):
-            with open(result.stat_file_location, 'a') as out_file:
+            frame_output = os.path.join(output_location, f'{i + 1}')
+            channel_name = result.channel_names[j+1]
+            csv_location = os.path.join(frame_output, f'{i+1}_{channel_name}.csv')
+            if not os.path.exists(frame_output):
+                os.mkdir(frame_output)
+            with open(csv_location, 'a') as out_file:
                 writer = csv.writer(out_file)
-                writer.writerow([i.sum_signal for i in channel_result])
+                for frame_result in channel_result:
+                    writer.writerow([k.sum_signal for k in frame_result])
 
 
 def filter_inputs_based_on_channel(
@@ -434,6 +430,11 @@ def segmentation(
     for x in os.scandir(input_directory):
         if x.is_dir:
             input_directories.append(x.path)
+    files_and_sizes = ((
+        path,
+        sum([file.stat().st_size for file in Path(path).rglob('*')])) for path in input_directories)
+    sorted_files_with_size = sorted(files_and_sizes, key=operator.itemgetter(1))
+    input_directories = [file_path for file_path, _ in sorted_files_with_size]
     filter_fn = functools.partial(
         filter_inputs_based_on_channel,
         filter_criteria=filter_criteria,
@@ -477,7 +478,7 @@ def segmentation(
 
 
 @app.command()
-def test(
+def s3_sync(
         input_directory: str = '/media/prime/beholder_output',
         output_bucket: str = 'beholder-output',
 ):
