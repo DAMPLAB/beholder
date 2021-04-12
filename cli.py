@@ -57,6 +57,8 @@ from beholder.signal_processing import (
     label_cells,
     draw_mask,
     fluorescence_detection,
+    generate_image_canvas,
+    generate_segmentation_visualization,
 )
 from beholder.signal_processing.sigpro_utility import (
     nd2_convert,
@@ -113,6 +115,9 @@ class TiffPackage:
         self.mask_frames = []
         self.frame_stats = []
         self.stat_file_location = []
+
+    def get_num_frames(self):
+        return self.img_array.shape[1]
 
 
 @dataclasses.dataclass
@@ -189,6 +194,13 @@ def preprocess_color_channel(
 def contour_filtration(contours):
     filtered_contours = cellular_highpass_filter(contours)
     return filtered_contours
+
+
+def generate_frame_visualization(result: List[TiffPackage]):
+    return generate_segmentation_visualization(
+        filename='test',
+        segmentation_results=result,
+    )
 
 
 def segmentation_pipeline(
@@ -320,14 +332,55 @@ def enqueue_segmentation(input_fp: str):
     for i, result in enumerate(tqdm.tqdm(segmentation_results)):
         for j, channel_result in enumerate(result.cell_signal_auxiliary_frames):
             frame_output = os.path.join(output_location, f'{i + 1}')
-            channel_name = result.channel_names[j+1]
-            csv_location = os.path.join(frame_output, f'{i+1}_{channel_name}.csv')
+            channel_name = result.channel_names[j + 1]
+            csv_location = os.path.join(frame_output, f'{i + 1}_{channel_name}.csv')
             if not os.path.exists(frame_output):
                 os.mkdir(frame_output)
             with open(csv_location, 'a') as out_file:
                 writer = csv.writer(out_file)
                 for frame_result in channel_result:
                     writer.writerow([k.sum_signal for k in frame_result])
+    if RENDER_VIDEOS:
+        if DEBUG:
+            c_results = list(
+                tqdm.tqdm(
+                    map(
+                        generate_frame_visualization,
+                        segmentation_results
+                    ),
+                    total=len(segmentation_results)
+                )
+            )
+        else:
+            with mp.get_context("spawn").Pool(processes=PROCESSES) as pool:
+                c_results = list(
+                    tqdm.tqdm(
+                        pool.imap(
+                            generate_frame_visualization,
+                            segmentation_results,
+                        ),
+                        desc="Generating Visualizations...",
+                        total=len(segmentation_results)
+                    )
+                )
+        write_list = []
+        # # iter = list(sigpro_utility.list_chunking(canvas_list, 20))
+        # # file_list = []
+        # # TODO: I need to balance moving things out of memory in the main python
+        # #  function with the speed loss of hitting the disk for every file.
+        # file_handles = list(
+        #     tqdm.tqdm(
+        #         map(
+        #             write_out,
+        #             write_list,
+        #         ),
+        #         desc="Writing Everything to disk...",
+        #         total=len(input_frames)))
+        # final_output = []
+        # for file in file_handles:
+        #     final_output.append(imageio.imread(file))
+        #     os.remove(file)
+        # imageio.mimsave(f'{output_directory}/{f_index}_video.gif', final_output)
 
 
 def filter_inputs_based_on_channel(
