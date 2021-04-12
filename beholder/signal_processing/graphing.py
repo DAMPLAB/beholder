@@ -7,7 +7,7 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
-
+from pathlib import Path
 import random as rng
 from typing import (
     List,
@@ -297,6 +297,92 @@ def stat_splitter(
     return channel_one_stats, channel_two_stats
 
 
+# It's a List of CellSignals, avoiding a circular import.
+def plot_cell_signal(
+        cell_signal_result: List[CellSignal],
+        channel_index: int,
+        input_axis,
+):
+    """
+
+    Args:
+        cell_signal_results:
+
+    Returns:
+
+    """
+    # TODO: I hate this. Bad data gonna bad data.
+    # For future Jackson, Sam's test data has a bunch of mislabled channels
+    # colors. For example, a number of them claim to be DAPI when they are in
+    # fact mCherry or similar. So, we would assume that the correct behavior
+    # would be to colorize the frame to correspond to it's fluorescent channel,
+    # to emulate what someone would see on a microscopic instrument. However,
+    # if we do that we're going to get nothing but bitchy complaints from
+    # everyone about how they didn't actually mess with the microscope and the
+    # data is wrong and etc etc and I just don't really have the patience.
+    color_dict = {
+        0: 'green',
+        1: 'red',
+    }
+    color = color_dict[channel_index]
+    canvas = FigureCanvasAgg(input_axis)
+    plt.title('Cellular Signal')
+    median_array = [np.median(x.fluorescent_pixels) for x in cell_signal_result]
+    median_stddev = [np.std(x.fluorescent_pixels) for x in cell_signal_result]
+    lower_bound = np.subtract(median_array, median_stddev)
+    upper_bound = np.add(median_array, median_stddev)
+    lower_bound = np.where(lower_bound < 0, 0, lower_bound)
+    time_scale = range(len(cell_signal_result))
+    # We want the lower band, the higher band, and the actual value.
+    plt.fill_between(
+        time_scale,
+        upper_bound,
+        lower_bound,
+        alpha=.5,
+        color=color,
+    )
+    plt.plot(time_scale, median_array, color=color)
+    canvas.draw()
+    buf = canvas.buffer_rgba()
+    return buf
+
+
+def plot_cell_count(
+        cell_signal_result: List[CellSignal],
+        channel_index: int,
+):
+    fig = plt.figure()
+    canvas = FigureCanvasAgg(fig)
+    plt.title('Cell Count')
+    cell_count = [x.fluorescent_pixels.size for x in cell_signal_result]
+    time_scale = range(len(cell_signal_result))
+    color_dict = {
+        0: 'green',
+        1: 'red',
+    }
+    color = color_dict[channel_index]
+    # We want the lower band, the higher band, and the actual value.
+    plt.plot(time_scale, cell_count, color=color)  #
+    canvas.draw()
+    buf = canvas.buffer_rgba()
+    plt.close(fig)
+    return buf
+
+
+# def plot_cell_count(channel_one_stats, channel_two_stats):
+#     fig = plt.figure()
+#     canvas = FigureCanvasAgg(fig)
+#     plt.title('Cell Count')
+#     channel_one_cell_count = [stat[2] for stat in channel_one_stats]
+#     channel_two_cell_count = [stat[2] for stat in channel_two_stats]
+#     time_scale = range(len(channel_one_stats))
+#     # We want the lower band, the higher band, and the actual value.
+#     plt.plot(time_scale, channel_one_cell_count, color='red')  #
+#     plt.plot(time_scale, channel_two_cell_count, color='green')  #
+#     canvas.draw()
+#     buf = canvas.buffer_rgba()
+#     return buf
+
 def plot_cellular_signal(channel_one_stats, channel_two_stats):
     fig = plt.figure()
     canvas = FigureCanvasAgg(fig)
@@ -334,22 +420,13 @@ def plot_cellular_signal(channel_one_stats, channel_two_stats):
     return buf
 
 
-def plot_cell_count(channel_one_stats, channel_two_stats):
-    fig = plt.figure()
-    canvas = FigureCanvasAgg(fig)
-    plt.title('Cell Count')
-    channel_one_cell_count = [stat[2] for stat in channel_one_stats]
-    channel_two_cell_count = [stat[2] for stat in channel_two_stats]
-    time_scale = range(len(channel_one_stats))
-    # We want the lower band, the higher band, and the actual value.
-    plt.plot(time_scale, channel_one_cell_count, color='red')  #
-    plt.plot(time_scale, channel_two_cell_count, color='green')  #
-    canvas.draw()
-    buf = canvas.buffer_rgba()
-    return buf
-
-
-def plot_double_histogram(processed_frame, raw_frame, axis, plot_name):
+def plot_signal_histogram(
+        segmentation_result,
+        observation_index,
+        frame_index,
+        axis,
+        plot_name,
+):
     '''
 
     Returns:
@@ -358,18 +435,24 @@ def plot_double_histogram(processed_frame, raw_frame, axis, plot_name):
     fig = plt.figure()
     canvas = FigureCanvasAgg(fig)
     plt.title(plot_name)
-    p_hist, p_bins = np.histogram(processed_frame, bins=100)
-    r_hist, r_bins = np.histogram(raw_frame, bins=100)
-    center = (p_bins[:-1] + p_bins[1:]) / 2
-    axis.bar(center, p_hist, align='center', width=100, color='green')
-    axis.bar(center, r_hist, align='center', width=100, color='red')
+    for channel_index, channel in enumerate(segmentation_result.cell_signal_auxiliary_frames):
+        p_hist, p_bins = np.histogram(channel[observation_index][frame_index].fluorescent_pixels, bins=100)
+        center = (p_bins[:-1] + p_bins[1:]) / 2
+        color_dict = {
+            0: 'green',
+            1: 'red',
+        }
+        color = color_dict[channel_index]
+        axis.bar(center, p_hist, align='center', width=100, color=color)
     axis.set_xlim([0, 100])
     axis.set_ylim([0, 1000000])
     axis.set_xticklabels([])
     axis.set_yticklabels([])
     canvas.draw()
     buf = canvas.buffer_rgba()
+    plt.close(fig)
     return buf
+
 
 def generate_image_canvas(
         processed_frame: np.ndarray,
@@ -392,7 +475,7 @@ def generate_image_canvas(
     cell_signal = plot_cellular_signal(c1_stats, c2_stats)
     cell_count = plot_cell_count(c1_stats, c2_stats)
     # TODO: Work via Mutation.
-    plot_double_histogram(processed_frame, raw_frame, axis_4, 'Processed Frame')
+    plot_signal_histogram(processed_frame, raw_frame, axis_4, 'Processed Frame')
     plot_histogram_notebook(raw_frame)
     array_list = [processed_frame, cell_signal, cell_count]
     axis_list = [axis_1, axis_2, axis_3]
@@ -406,4 +489,76 @@ def generate_image_canvas(
     plt.text(0.1, 0.9, 'matplotlib', ha='center', va='center')
     canvas.draw()
     buf = canvas.buffer_rgba()
+    plt.close(fig)
     return np.asarray(buf)
+
+
+def generate_segmentation_visualization(
+        filename: str,
+        segmentation_results: List,
+):
+    """
+
+    Args:
+        segmentation_results:
+
+    Returns:
+
+    """
+    # Set the dimensions of our primary canvas
+    fig = plt.figure(figsize=(13, 6))
+    canvas = FigureCanvasAgg(fig)
+    grid = plt.GridSpec(7, 6, hspace=0.0, wspace=0.0)
+    primary_title = Path(filename).stem
+    labeled_frame_axis = fig.add_subplot(grid[:6, :5])
+    cell_signal_axis = fig.add_subplot(grid[0:3, 4:6])
+    cell_count_axis = fig.add_subplot(grid[3:6, 4:6])
+    signal_histogram_axis = fig.add_subplot(grid[6:7, :])
+    # TODO: I think we have to go a layer deeper because I think this is only
+    # going to plot the entirety of a frame instead of the
+    # observation-to-observation plot that we want.
+    out_list = []
+    for observation_index in range(segmentation_results.get_num_frames()):
+        plt.title(f'{primary_title}_{observation_index}')
+        # Padding the Array to our final point
+        # stats_list += [[(0, 0, 0), (0, 0, 0)]] * (stats_final_size - len(stats_list))
+        cell_signal = []
+        cell_count = []
+        histogram_out = []
+        # Note the colon before the frame index, this is to get us all of the
+        # prior observations to create the 'real-time' effect. -Jx.
+        for channel_index, aux_channel in enumerate(segmentation_results.cell_signal_auxiliary_frames):
+            for frame_index in range(len(aux_channel[observation_index])):
+                inner_signal = plot_cell_signal(
+                    aux_channel[observation_index][0:frame_index],
+                    channel_index,
+                )
+                inner_count = plot_cell_count(
+                    aux_channel[observation_index][0:frame_index],
+                    channel_index,
+                )
+                cell_count.append(inner_count)
+                cell_signal.append(inner_signal)
+                # TODO: This will plot it twice.
+                plot_signal_histogram(
+                    segmentation_result=segmentation_results,
+                    observation_index=observation_index,
+                    frame_index=frame_index,
+                    axis=signal_histogram_axis,
+                    plot_name='Processed Frame',
+                )
+        # plot_histogram_notebook(raw_frame)
+        array_list = [segmentation_results.processed_primary_frames[observation_index], cell_signal, cell_count]
+        axis_list = [labeled_frame_axis, cell_signal_axis, cell_count_axis]
+        for array, axis in zip(array_list, axis_list):
+            axis.imshow(array, interpolation='nearest')
+            plt.axis('off')
+            axis.set_xticklabels([])
+            axis.set_yticklabels([])
+            axis.set_aspect('equal')
+        plt.tight_layout()
+        plt.text(0.1, 0.9, 'matplotlib', ha='center', va='center')
+        canvas.draw()
+        buf = canvas.buffer_rgba()
+        out_list.append(np.asarray(buf))
+    return out_list

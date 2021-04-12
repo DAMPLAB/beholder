@@ -42,4 +42,6 @@ from .stats import (
 from .graphing import (
     draw_mask,
     label_cells,
+    generate_image_canvas,
+    generate_segmentation_visualization,
 )
