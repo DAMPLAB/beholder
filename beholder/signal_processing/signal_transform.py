@@ -13,6 +13,7 @@ import random as rng
 from typing import (
     List,
     Tuple,
+    Union,
 )
 
 import cv2
@@ -551,3 +552,22 @@ def crop_from_points(
         p1: Tuple[int, int],
 ):
     return input_frame[p0[0]:p1[0], p0[1]:p1[1]]
+
+
+def debug_image(
+        file: Union[str, np.ndarray],
+        display_title: str,
+):
+    img = None
+    if type(file) == str:
+        img = cv2.imread(file, 0)
+    if type(file) == np.ndarray:
+        img = file
+    if img is None:
+        raise RuntimeError(
+            'Image is never being assigned to a valid input, '
+            'please investigate.'
+        )
+    cv2.imshow(display_title, img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()

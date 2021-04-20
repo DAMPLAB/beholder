@@ -28,6 +28,7 @@ from .signal_transform import (
     colorize_frame,
     cellular_highpass_filter,
     combine_frame,
+    debug_image,
 )
 from .sigpro_utility import (
     open_microscopy_image,

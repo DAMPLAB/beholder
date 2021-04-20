@@ -59,6 +59,12 @@ from beholder.signal_processing import (
     fluorescence_detection,
     generate_image_canvas,
     generate_segmentation_visualization,
+    debug_image,
+
+)
+from beholder.ds import (
+    TiffPackage,
+    StatisticResults,
 )
 from beholder.signal_processing.sigpro_utility import (
     nd2_convert,
@@ -74,58 +80,11 @@ PROCESSES = mp.cpu_count() - 1
 COLOR_LUT = {
     'PhC': 'grey',
     'm-Cherry': 'red',
-    'DAPI1': 'blue',
+    'DAPI1': 'green',
     'YFP': 'yellow',
 }
-DEBUG = True
-
-
-# ------------------------------- Datastructures -------------------------------
-@dataclasses.dataclass
-class TiffPackage:
-    img_array: np.ndarray
-    tiff_name: str
-    channel_names: List[str]
-    channel_wavelengths: List[str]
-    processed_array: List[np.ndarray] = None
-    processed_frame_correlation: List[Tuple] = None
-    output_statistics: List[Tuple] = None
-    labeled_frames: List[np.ndarray] = None
-    final_frames: List[np.ndarray] = None
-    mask_frames: List[np.ndarray] = None
-
-    processed_primary_frames: List = None
-    processed_auxiliary_frames: List = None
-
-    cell_signal_auxiliary_frames: List = None
-
-    labeled_auxiliary_frames: List = None
-
-    frame_stats: List = None
-
-    stat_file_location: List = None
-
-    def __post_init__(self):
-        self.processed_array = []
-        self.processed_primary_frames = []
-        self.processed_auxiliary_frames = []
-        self.cell_signal_auxiliary_frames = []
-        self.labeled_auxiliary_frames = []
-        self.final_frames = []
-        self.mask_frames = []
-        self.frame_stats = []
-        self.stat_file_location = []
-
-    def get_num_frames(self):
-        return self.img_array.shape[1]
-
-
-@dataclasses.dataclass
-class StatisticResults:
-    img_array: np.ndarray
-    tiff_name: str
-    channels: List[str]
-    processed_array: List[np.ndarray] = None
+SINGLE_THREAD_DEBUG = True
+VISUALIZATION_DEBUG = False
 
 
 # ----------------------- Command Line Utility Functions -----------------------
@@ -196,11 +155,22 @@ def contour_filtration(contours):
     return filtered_contours
 
 
-def generate_frame_visualization(result: List[TiffPackage]):
+def generate_frame_visualization(input_arguments: Tuple[int, TiffPackage, str]):
+    index, result, filepath = input_arguments
     return generate_segmentation_visualization(
-        filename='test',
-        segmentation_results=result,
+        filename=filepath,
+        observation_index=index,
+        packed_tiff=result,
     )
+
+
+def debug_visualization(input_frame: np.ndarray, name: str):
+    if VISUALIZATION_DEBUG:
+        print(f'Debug for {name}')
+        print(f'Total Value for Frames {np.sum(input_frame)}')
+        print(f'Shape of Array {input_frame.shape}')
+        debug_image(input_frame, name)
+        print('------')
 
 
 def segmentation_pipeline(
@@ -211,9 +181,12 @@ def segmentation_pipeline(
     # ------ SPLITTING OUT THE INPUT DATASTRUCTURE AND INITIAL PROCESSING ------
     for aux_channel_index in range(auxiliary_channels.shape[0]):
         packaged_tiff.cell_signal_auxiliary_frames.append([])
+        packaged_tiff.frame_stats.append([])
+        packaged_tiff.labeled_auxiliary_frames.append([])
     for frame_index in range(primary_channel.shape[0]):
         # Handle the primary frame. We use the primary frame to color stuff in.
         primary_frame = primary_channel[frame_index]
+        debug_visualization(primary_frame, 'Primary Frame Initial')
         prime_contours = preprocess_primary_frame_and_find_contours(
             primary_frame
         )
@@ -232,8 +205,9 @@ def segmentation_pipeline(
                 aux_frame,
                 color,
             )
+            debug_visualization(aux_processed_output, f'Aux Frame {aux_channel_index}')
             aux_frame_container.append(aux_processed_output)
-        # ------------ CORRELATING CELL CONTOURS TO FLUORESCENCE SIGNAL ------------
+        # ---------- CORRELATING CELL CONTOURS TO FLUORESCENCE SIGNAL ----------
         for aux_channel_index in range(auxiliary_channels.shape[0]):
             aux_frame = auxiliary_channels[aux_channel_index][frame_index]
             correlated_cells = fluorescence_detection(
@@ -245,25 +219,33 @@ def segmentation_pipeline(
         frame_stats = generate_arbitrary_stats(
             packaged_tiff.cell_signal_auxiliary_frames
         )
-        # ----------------- LABELING FRAMES WITH DETECTED SIGNALS ------------------
-        aux_labeled_frame = []
+        for aux_channel_index in range(auxiliary_channels.shape[0]):
+            packaged_tiff.frame_stats[aux_channel_index].append(frame_stats[aux_channel_index])
+        # --------------- LABELING FRAMES WITH DETECTED SIGNALS ----------------
         for aux_channel_index in range(auxiliary_channels.shape[0]):
             aux_frame = auxiliary_channels[aux_channel_index][frame_index]
+            debug_visualization(aux_frame, 'Non-Downsampled Aux Frame')
+            debug_visualization(downsample_image(aux_frame), 'Downsampled Aux Frame')
             out_label = label_cells(
                 downsample_image(aux_frame),
                 prime_contours,
                 frame_stats[aux_channel_index][frame_index],
             )
-            aux_labeled_frame.append(out_label)
-        packaged_tiff.labeled_auxiliary_frames.append(aux_labeled_frame)
-        # ----------------- COMBINING FRAMES FOR VISUALIZATION  ------------------
-        out_frame = primary_frame
+            debug_visualization(out_label, 'Out Label')
+            packaged_tiff.labeled_auxiliary_frames[aux_channel_index].append(out_label)
+        # ---------------- COMBINING FRAMES FOR VISUALIZATION  -----------------
+        out_frame = downsample_image(primary_frame)
         for aux_channel_index in range(auxiliary_channels.shape[0]):
-            aux_frame = auxiliary_channels[aux_channel_index][frame_index]
+            color = COLOR_LUT[packaged_tiff.channel_names[aux_channel_index + 1]]
+            labeled_frame = packaged_tiff.labeled_auxiliary_frames[aux_channel_index][frame_index]
+            debug_visualization(labeled_frame, 'Raw Pull of Labeled Frame')
+            labeled_frame = colorize_frame(labeled_frame, color)
+            debug_visualization(labeled_frame, 'Colorization of Labeled Frame')
             out_frame = combine_frame(
                 out_frame,
-                aux_frame,
+                labeled_frame,
             )
+        debug_visualization(out_frame, 'Final Frame')
         packaged_tiff.final_frames.append(out_frame)
     return packaged_tiff
 
@@ -274,7 +256,7 @@ def enqueue_segmentation(input_fp: str):
     # We need to take the xml file and extract the channels, sizes, and
     # resolutions and use that to create a class object that can encapuslate the
     # logic related to segmenting tiffs of various dimensions and properties.
-    global DEBUG
+    global SINGLE_THREAD_DEBUG
     metadata_fp = os.path.join(input_fp, 'metadata.xml')
     tree = ET.parse(metadata_fp)
     # This assumes that everyone has the same amount of channels.
@@ -306,7 +288,7 @@ def enqueue_segmentation(input_fp: str):
     output_location = os.path.join(input_fp, 'segmentation_output')
     if not os.path.exists(output_location):
         os.mkdir(output_location)
-    if DEBUG:
+    if SINGLE_THREAD_DEBUG:
         segmentation_results = list(
             tqdm.tqdm(
                 map(
@@ -341,47 +323,24 @@ def enqueue_segmentation(input_fp: str):
                 for frame_result in channel_result:
                     writer.writerow([k.sum_signal for k in frame_result])
     if RENDER_VIDEOS:
-        if DEBUG:
-            c_results = list(
-                tqdm.tqdm(
-                    map(
-                        generate_frame_visualization,
-                        segmentation_results
-                    ),
-                    total=len(segmentation_results)
-                )
-            )
+        arg_tuple = range(len(segmentation_results)), segmentation_results, output_location
+        if SINGLE_THREAD_DEBUG:
+            for index, segmentation_result in tqdm.tqdm(
+                    enumerate(segmentation_results),
+                    leave=False,
+            ):
+                input_args = index, segmentation_result, output_location
+                generate_frame_visualization(input_args)
         else:
             with mp.get_context("spawn").Pool(processes=PROCESSES) as pool:
-                c_results = list(
-                    tqdm.tqdm(
-                        pool.imap(
-                            generate_frame_visualization,
-                            segmentation_results,
-                        ),
-                        desc="Generating Visualizations...",
-                        total=len(segmentation_results)
-                    )
+                tqdm.tqdm(
+                    pool.imap(
+                        generate_frame_visualization,
+                        arg_tuple,
+                    ),
+                    desc="Generating Visualizations...",
+                    total=len(segmentation_results)
                 )
-        write_list = []
-        # # iter = list(sigpro_utility.list_chunking(canvas_list, 20))
-        # # file_list = []
-        # # TODO: I need to balance moving things out of memory in the main python
-        # #  function with the speed loss of hitting the disk for every file.
-        # file_handles = list(
-        #     tqdm.tqdm(
-        #         map(
-        #             write_out,
-        #             write_list,
-        #         ),
-        #         desc="Writing Everything to disk...",
-        #         total=len(input_frames)))
-        # final_output = []
-        # for file in file_handles:
-        #     final_output.append(imageio.imread(file))
-        #     os.remove(file)
-        # imageio.mimsave(f'{output_directory}/{f_index}_video.gif', final_output)
-
 
 def filter_inputs_based_on_channel(
         input_directory: str,
@@ -407,8 +366,8 @@ def filter_inputs_based_on_channel(
 # ---------------------------- Application Commands ----------------------------
 @app.command()
 def convert_nd2_to_tiffs(
-        input_directory: str = '/media/jackson/967e3f65-43ea-4c63-bcdd-e124725e6d63/microscopy_images/sam_2021',
-        output_directory: str = '/media/jackson/967e3f65-43ea-4c63-bcdd-e124725e6d63/beholder_output',
+        input_directory: str = '/media/prime/microscopy_images/sam_2021',
+        output_directory: str = '/media/prime/beholder_output',
         logging: bool = True,
 ):
     """
@@ -448,9 +407,11 @@ def convert_nd2_to_tiffs(
         conversion_list = out_list
     # We have our selected input files and now we have to make sure that they
     # have a home...
-    for input_fp in conversion_list:
+    for index, input_fp in enumerate(conversion_list):
         if logging:
-            beholder_text(f'Converting {Path(input_fp).stem} to Tiff Files...')
+            beholder_text(
+                f'Converting {Path(input_fp).stem} to Tiff Files.. ({index}/{len(conversion_list)}).'
+            )
         out_dir = os.path.join(output_directory, Path(input_fp).stem)
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
@@ -462,7 +423,7 @@ def segmentation(
         input_directory: str = '/media/prime/beholder_output',
         render_videos: bool = True,
         logging: bool = True,
-        filter_criteria: int = 3,
+        filter_criteria: int = None,
 ):
     """
 
@@ -488,11 +449,12 @@ def segmentation(
         sum([file.stat().st_size for file in Path(path).rglob('*')])) for path in input_directories)
     sorted_files_with_size = sorted(files_and_sizes, key=operator.itemgetter(1))
     input_directories = [file_path for file_path, _ in sorted_files_with_size]
-    filter_fn = functools.partial(
-        filter_inputs_based_on_channel,
-        filter_criteria=filter_criteria,
-    )
-    input_directories = list((filter(filter_fn, input_directories)))
+    if filter_criteria is not None:
+        filter_fn = functools.partial(
+            filter_inputs_based_on_channel,
+            filter_criteria=filter_criteria,
+        )
+        input_directories = list((filter(filter_fn, input_directories)))
     display_directories = [Path(i).stem for i in input_directories]
     display_directories.insert(0, 'all')
     beholder_text('⬤ Please select input directories.')
@@ -517,11 +479,11 @@ def segmentation(
         segmentation_list = out_list
     # We have our selected input files and now we have to make sure that they
     # have a home...
-    for input_directory in segmentation_list:
+    for index, input_directory in enumerate(segmentation_list):
         if logging:
             beholder_text(
                 f'⬤ Starting Segmentation Pipeline for '
-                f'{Path(input_directory).stem}...'
+                f'{Path(input_directory).stem}... ({index}/{len(segmentation_list)})'
             )
             beholder_text(
                 '-' * 88
