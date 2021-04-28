@@ -342,6 +342,7 @@ def enqueue_segmentation(input_fp: str):
                     total=len(segmentation_results)
                 )
 
+
 def filter_inputs_based_on_channel(
         input_directory: str,
         filter_criteria: int = 2,
@@ -493,13 +494,55 @@ def segmentation(
 
 
 @app.command()
-def s3_sync(
-        input_directory: str = '/media/prime/beholder_output',
+def s3_sync_upload(
+        input_directory: str = '/media/core2/beholder_output',
         output_bucket: str = 'beholder-output',
+        results_only: bool = True,
 ):
+    """
+
+    Args:
+        input_directory:
+        output_bucket:
+        results_only:
+
+    Returns:
+
+    """
     beholder_text(f'⬤ Syncing {input_directory} to AWS S3 Bucket {output_bucket}.')
     beholder_text('-' * 88)
     cmd = ['aws', 's3', 'sync', '--size-only', f'{input_directory}', f's3://{output_bucket}']
+    if results_only:
+        cmd.append('--exclude')
+        cmd.append('*.tiff')
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True) as proc:
+        for stdout_line in proc.stdout:
+            sys.stdout.write(f'{stdout_line}\r')
+            sys.stdout.flush()
+
+
+@app.command()
+def s3_sync_download(
+        output_directory: str = '/mnt/core2/beholder_test',
+        input_bucket: str = 'beholder-output',
+        results_only: bool = True,
+):
+    """
+
+    Args:
+        output_directory:
+        input_bucket:
+        results_only:
+
+    Returns:
+
+    """
+    beholder_text(f'⬤ Downloading AWS S3 Bucket {input_bucket} to local directory {output_directory}...')
+    beholder_text('-' * 88)
+    cmd = ['aws', 's3', 'sync', f's3://{input_bucket}', f'{output_directory}', '--exclude', '*.tiff']
+    if results_only:
+        cmd.append('--exclude')
+        cmd.append('*.tiff')
     with subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True) as proc:
         for stdout_line in proc.stdout:
             sys.stdout.write(f'{stdout_line}\r')
