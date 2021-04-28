@@ -499,7 +499,7 @@ def s3_sync(
 ):
     beholder_text(f'⬤ Syncing {input_directory} to AWS S3 Bucket {output_bucket}.')
     beholder_text('-' * 88)
-    cmd = ['aws', 's3', 'sync', f'{input_directory}', f's3://{output_bucket}']
+    cmd = ['aws', 's3', 'sync', '--size-only', f'{input_directory}', f's3://{output_bucket}']
     with subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True) as proc:
         for stdout_line in proc.stdout:
             sys.stdout.write(f'{stdout_line}\r')
