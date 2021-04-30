@@ -28,8 +28,8 @@ class TiffPackage:
     final_frames: List[np.ndarray] = None
     mask_frames: List[np.ndarray] = None
 
-    processed_primary_frames: List = None
-    processed_auxiliary_frames: List = None
+    primary_frame_contours: List = None
+    auxiliary_frame_contours: List = None
 
     cell_signal_auxiliary_frames: List = None
 
@@ -41,8 +41,8 @@ class TiffPackage:
 
     def __post_init__(self):
         self.processed_array = []
-        self.processed_primary_frames = []
-        self.processed_auxiliary_frames = []
+        self.primary_frame_contours = []
+        self.auxiliary_frame_contours = []
         self.cell_signal_auxiliary_frames = []
         self.labeled_auxiliary_frames = []
         self.final_frames = []

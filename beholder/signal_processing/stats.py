@@ -7,7 +7,6 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
-import csv
 import os
 from dataclasses import dataclass
 from typing import List
@@ -16,7 +15,19 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from numba import jit
+from beholder.signal_processing.signal_transform import (
+    debug_image,
+    downsample_image,
+)
+
+
+def debug_visualization(input_frame: np.ndarray, name: str):
+    print(f'Debug for {name}')
+    print(f'Total Value for Frames {np.sum(input_frame)}')
+    print(f'Shape of Array {input_frame.shape}')
+    debug_image(input_frame, name)
+    print('------')
+
 
 @dataclass
 class CellSignal:
@@ -27,7 +38,8 @@ class CellSignal:
 
 @dataclass
 class CellStats:
-    raw_signal: float
+    raw_signal: List[float]
+    fl_signal: List[float]
     median_signal: float
     std_dev: float
     filtered_len: int
@@ -52,6 +64,8 @@ def fluorescence_detection(
     # can map it to cells), the summation of the signal, and then every single
     # fluorescent indice if we feel like doing anything.
     cell_signals = []
+    # fluorescent_frame = downsample_image(fluorescent_frame)
+
     for contour_idx in range(len(contour_list)):
         contour_mask = np.zeros_like(grayscale_frame)
         cv2.drawContours(
@@ -63,7 +77,7 @@ def fluorescence_detection(
         )
         mask_indices = np.where(contour_mask == 255)
         fluorescent_intensities = fluorescent_frame[mask_indices[0], mask_indices[1]]
-        # Noise floor. 256 >> 2 = 32?
+        # print(np.mean(fluorescent_intensities))
         if np.mean(fluorescent_intensities) < 31:
             pass
         else:
@@ -76,8 +90,36 @@ def fluorescence_detection(
     return cell_signals
 
 
+def fluorescence_filtration(
+        grayscale_frame: np.ndarray,
+        fluorescent_frame: np.ndarray,
+        primary_contour_list: List[np.ndarray],
+        aux_contour_list: List[np.ndarray],
+):
+    # Generate our mask frames. They should share the same xy dimensions.
+    primary_mask = np.zeros_like(fluorescent_frame, dtype=np.uint8)
+    aux_mask = np.zeros_like(fluorescent_frame, dtype=np.uint8)
+    # We then draw our contours onto their respective masks.
+    primary_mask = cv2.drawContours(primary_mask, primary_contour_list, -1, 255, cv2.FILLED)
+    aux_mask = cv2.drawContours(aux_mask, aux_contour_list, -1, 255, cv2.FILLED)
+    mask_combined = cv2.bitwise_and(primary_mask, aux_mask)
+    mask_indices = np.where(mask_combined == 255)
+    fluorescent_intensities = fluorescent_frame[mask_indices[0], mask_indices[1]]
+    # debug_visualization(mask_combined, 'Non-Downsampled Aux Frame')
+    # if np.mean(fluorescent_intensities) < 31:
+    #     pass
+    # else:
+    #     new_cell = CellSignal(
+    #         contour_index=contour_idx,
+    #         sum_signal=np.sum(fluorescent_intensities),
+    #         fluorescent_pixels=fluorescent_intensities,
+    #     )
+    #     cell_signals.append(new_cell)
+
+
 def generate_arbitrary_stats(
         channel_stats: List[List[CellSignal]],
+        bin_lower_threshold: int = 25,
 ):
     '''
 
@@ -93,12 +135,13 @@ def generate_arbitrary_stats(
         for cell_set in channel_set:
             raw_signal = [cell_st.sum_signal for cell_st in cell_set]
             hist, bins = np.histogram(raw_signal, bins=100)
-            bin_limit = bins[3]
-            filtered_set = list(filter(lambda x: x.sum_signal < bin_limit, cell_set))
+            bin_limit = bins[bin_lower_threshold]
+            filtered_set = list(filter(lambda x: x.sum_signal > bin_limit, cell_set))
             f_signal = [fil_st.sum_signal for fil_st in filtered_set]
             median_signal = np.median(f_signal)
             std_dev = np.std(f_signal)
             inner_cell_stats = CellStats(
+                fl_signal=f_signal,
                 raw_signal=raw_signal,
                 median_signal=median_signal,
                 std_dev=std_dev,
@@ -107,7 +150,6 @@ def generate_arbitrary_stats(
             channel_list.append(inner_cell_stats)
         out_list.append(channel_list)
     return out_list
-
 
 
 def generate_frame_stats(

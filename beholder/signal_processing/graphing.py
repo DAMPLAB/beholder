@@ -61,8 +61,10 @@ class FrameResult:
         # TODO: Should probably add a getter or setter somewhere for our color
         #  map so that if we refactor at a future date it'll be consistent.
         self.color_dict = {
-            0: 'green',
-            1: 'red',
+            'PhC': 'grey',
+            'm-Cherry': 'red',
+            'DAPI1': 'green',
+            'YFP': 'yellow',
         }
         # This is a bit of a hack to get around some weirdness with multiplots
         # and reducing resolution for some of our combined images as well as
@@ -112,7 +114,7 @@ class FrameResult:
 
     def remove_images(
             self,
-            keep_composite: bool = True,
+            keep_composite: bool = False,
     ):
         written_images = [
             self.labeled_image_fp,
@@ -180,13 +182,15 @@ class FrameResult:
                 upper_bound,
                 lower_bound,
                 alpha=.5,
-                color=self.color_dict[channel_index],
+                color=self.color_dict[packed_tiff.channel_names[channel_index+1]],
             )
             plt.plot(
                 time_scale,
                 median_array,
-                color=self.color_dict[channel_index],
+                color=self.color_dict[packed_tiff.channel_names[channel_index+1]],
+                label=f'{packed_tiff.channel_names[channel_index+1]}',
             )
+            plt.legend()
         file_handle = f'{self.frame_index}_cell_signal.png'
         fp = os.path.join(self.filepath, file_handle)
         plt.savefig(fp)
@@ -209,23 +213,38 @@ class FrameResult:
         plt.xlabel('Frame Number')
         plt.ylabel('Num. of Cells')
         plt.xlim(0, total_num_of_frames - 1)
+        # --------------------------- GREY GRAPHING ----------------------------
+        raw_stats: List[CellStats] = packed_tiff.frame_stats[0][self.frame_index]
+        raw_cell_count = [len(x.raw_signal) for x in raw_stats]
+        raw_cell_count += [0] * (total_num_of_frames - len(raw_cell_count))
+        time_scale = list(range(total_num_of_frames))
+        time_scale += [0] * (total_num_of_frames - len(raw_cell_count))
+        plt.plot(
+            time_scale,
+            raw_cell_count,
+            color=self.color_dict[packed_tiff.channel_names[0]],
+            label=f'{packed_tiff.channel_names[0]}',
+        )
         # --------------------------- ACTUAL GRAPHING --------------------------
         for channel_index in range(packed_tiff.get_num_channels()):
             cell_stats: List[CellStats] = packed_tiff.frame_stats[channel_index][self.frame_index]
-            cell_count = [len(x.raw_signal) for x in cell_stats]
-            cell_count += [0] * (total_num_of_frames - len(cell_count))
+            fl_cell_count = [len(x.fl_signal) for x in cell_stats]
+            fl_cell_count += [0] * (total_num_of_frames - len(fl_cell_count))
             time_scale = list(range(total_num_of_frames))
-            time_scale += [0] * (total_num_of_frames - len(cell_count))
+            time_scale += [0] * (total_num_of_frames - len(fl_cell_count))
+            # print(f'{cell_count=}, {channel_index=}')
             plt.plot(
                 time_scale,
-                cell_count,
-                color=self.color_dict[channel_index],
+                fl_cell_count,
+                color=self.color_dict[packed_tiff.channel_names[channel_index+1]],
+                label=f'{packed_tiff.channel_names[channel_index + 1]}',
             )
+            plt.legend()
         file_handle = f'{self.frame_index}_cell_count.png'
         fp = os.path.join(self.filepath, file_handle)
         plt.savefig(fp)
-        plt.savefig(file_handle)
         self.cell_count_image_fp = fp
+        plt.clf()
         if SINGLE_THREAD_DEBUG:
             self.debug_image(
                 self.cell_count_image_fp,
@@ -281,8 +300,9 @@ class FrameResult:
             # font=font,
         )
         file_handle = f'{self.frame_index}_composite.png'
-        base_image.save(file_handle)
-        self.composite_image_fp = file_handle
+        fp = os.path.join(self.filepath, file_handle)
+        base_image.save(fp)
+        self.composite_image_fp = fp
         if SINGLE_THREAD_DEBUG:
             self.debug_image(
                 self.composite_image_fp,
@@ -330,7 +350,7 @@ def plot_histogram_notebook(input_array: np.ndarray):
     center = (bins[:-1] + bins[1:]) / 2
     plt.bar(center, hist, align='center', width=width)
     # plt.show()
-0
+
 
 def plot_notebook(input_array: np.ndarray):
     plt.imshow(input_array, cmap='gray')
@@ -465,325 +485,6 @@ def label_cells(
             bbox_list[i][1],
         )
     return input_frame
-
-
-def plot_total(
-        total_statistics: List[Tuple[float, float, float]],
-        context: str = 'save',
-):
-    '''
-
-    Args:
-        total_statistics:
-
-    Returns:
-
-    '''
-    channel_one_stats = []
-    channel_two_stats = []
-    out_list = []
-    fig = plt.figure()
-    canvas = FigureCanvasAgg(fig)
-    for stat_pair in total_statistics:
-        c1_stat, c2_stat = stat_pair
-        channel_one_stats.append(c1_stat)
-        channel_two_stats.append(c2_stat)
-    channel_one_median = [stat[0] for stat in channel_one_stats]
-    channel_one_std_dev = [stat[1] for stat in channel_one_stats]
-    channel_one_cell_count = [stat[2] for stat in channel_one_stats]
-    channel_two_median = [stat[0] for stat in channel_two_stats]
-    channel_two_std_dev = [stat[1] for stat in channel_two_stats]
-    channel_two_cell_count = [stat[2] for stat in channel_two_stats]
-    channel_one_pos = np.add(channel_one_median, channel_one_std_dev)
-    channel_one_neg = np.subtract(channel_one_median, channel_one_std_dev)
-    channel_two_pos = np.add(channel_two_median, channel_two_std_dev)
-    channel_two_neg = np.subtract(channel_two_median, channel_two_std_dev)
-    time_scale = range(len(channel_one_stats))
-    # We want the lower band, the higher band, and the actual value.
-    ax1.fill_between(
-        time_scale,
-        channel_one_pos,
-        channel_one_neg,
-        alpha=.5,
-        color='green',
-    )
-    ax1.fill_between(
-        time_scale,
-        channel_two_pos,
-        channel_two_neg,
-        alpha=.5,
-        color='red',
-    )
-    ax1.plot(time_scale[::-1], channel_one_median[::-1], color='green')  #
-    ax1.plot(time_scale[::-1], channel_two_median[::-1], color='red')  #
-    if context == 'save':
-        plt.savefig('example.png')
-    if context == 'subplot':
-        canvas.draw()
-        buf = canvas.buffer_rgba()
-        buf_1 = buf[:]
-        out_list.append(buf_1)
-    # plt.clf()
-    # plt.cla()
-    # plt.close()
-    ax2.plot(time_scale[::-1], channel_one_cell_count[::-1], color='blue')  #
-    ax2.plot(time_scale[::-1], channel_two_cell_count[::-1], color='purple')  #
-    if context == 'save':
-        plt.savefig('example1.png')
-    if context == 'subplot':
-        canvas.draw()
-        buf = canvas.buffer_rgba()
-        buf_2 = buf[:]
-        out_list.append(buf_2)
-    # plt.legend()
-    # plt.show()
-    if context == 'subplot':
-        canvas.draw()
-        buf = canvas.buffer_rgba()
-        return buf
-
-
-def generate_multiplot(
-        frame_list: List[np.ndarray],
-        frame_annotations: List[str],
-        context: str = 'active_frame',
-):
-    fig = plt.figure(figsize=(16, 3))
-    canvas = FigureCanvasAgg(fig)
-    gs1 = gridspec.GridSpec(1, 4)
-    gs1.update(wspace=0.2, hspace=0.02)
-    plt.margins(.5, .5)
-    for i, anno in enumerate(frame_annotations):
-        ax1 = plt.subplot(gs1[i])
-        active_frame = frame_list[i]
-        if not i:
-            ax1.imshow(active_frame[
-                       int(active_frame.shape[0] / 2):int(active_frame.shape[0]),
-                       int(active_frame.shape[1] / 2):int(active_frame.shape[1])
-                       ],
-                       cmap='gray')
-        else:
-            ax1.imshow(active_frame[
-                       int(active_frame.shape[0] / 2):int(active_frame.shape[0]),
-                       int(active_frame.shape[1] / 2):int(active_frame.shape[1])
-                       ],
-                       interpolation='nearest')
-        ax1.set_title(anno)
-        plt.axis('off')
-        ax1.set_xticklabels([])
-        ax1.set_yticklabels([])
-        ax1.set_aspect('equal')
-        autoAxis = ax1.axis()
-        rec = plt.Rectangle((autoAxis[0] - 0.7, autoAxis[2] - 0.2),
-                            (autoAxis[1] - autoAxis[0]) + 1,
-                            (autoAxis[3] - autoAxis[2]) + 0.4, fill=False, lw=2)
-        rec = ax1.add_patch(rec)
-        rec.set_clip_on(False)
-    plt.axis('off')
-    if context == 'to_disk':
-        plt.savefig(
-            "test1.jpg",
-            bbox_inches='tight',
-            pad_inches=.2,
-        )
-    if context == 'active_frame':
-        canvas.draw()
-        buf = canvas.buffer_rgba()
-        return np.asarray(buf)
-
-
-def stat_splitter(
-        total_statistics: List[Tuple[float, float]],
-):
-    channel_one_stats = []
-    channel_two_stats = []
-    for stat_pair in total_statistics:
-        c1_stat, c2_stat = stat_pair
-        channel_one_stats.append(c1_stat)
-        channel_two_stats.append(c2_stat)
-    return channel_one_stats, channel_two_stats
-
-
-# It's a List of CellSignals, avoiding a circular import.
-def plot_cell_signal(
-        cell_signal_result: List[CellSignal],
-        channel_index: int,
-        input_axis,
-        observation_length: int
-):
-    """
-
-    Args:
-        cell_signal_results:
-
-    Returns:
-
-    """
-    # TODO: I hate this. Bad data gonna bad data.
-    # For future Jackson, Sam's test data has a bunch of mislabled channels
-    # colors. For example, a number of them claim to be DAPI when they are in
-    # fact mCherry or similar. So, we would assume that the correct behavior
-    # would be to colorize the frame to correspond to it's fluorescent channel,
-    # to emulate what someone would see on a microscopic instrument. However,
-    # if we do that we're going to get nothing but bitchy complaints from
-    # everyone about how they didn't actually mess with the microscope and the
-    # data is wrong and etc etc and I just don't really have the patience.
-    color_dict = {
-        0: 'green',
-        1: 'red',
-    }
-    color = color_dict[channel_index]
-    # canvas = FigureCanvasAgg(input_axis)
-    input_axis.set_title('Cellular Signal')
-    input_axis.set_xlabel('Observation Number')
-    input_axis.set_ylabel('Intensity A.U.')
-    input_axis.set_xlim(0, observation_length)
-    median_array = [x.median_signal for x in cell_signal_result]
-    original_delta = len(median_array)
-    median_stddev = [x.std_dev for x in cell_signal_result]
-    lower_bound = np.subtract(median_array, median_stddev)
-    upper_bound = np.add(median_array, median_stddev)
-    lower_bound = np.where(lower_bound < 0, 0, lower_bound)
-    time_scale = list(range(observation_length))
-    median_array += [0] * (observation_length - original_delta)
-    lower_bound.resize(observation_length, refcheck=False)
-    upper_bound.resize(observation_length, refcheck=False)
-    # We want the lower band, the higher band, and the actual value.
-    input_axis.fill_between(
-        time_scale,
-        upper_bound,
-        lower_bound,
-        alpha=.5,
-        color=color,
-    )
-    input_axis.plot(time_scale, median_array, color=color)
-    plt.draw()
-
-
-def plot_cell_count(
-        cell_signal_result: List[CellSignal],
-        channel_index: int,
-        input_axis,
-        observation_length: int
-):
-    input_axis.set_title('Cell Count')
-    cell_count = [len(x.raw_signal) for x in cell_signal_result]
-    cell_count += [0] * (observation_length - len(cell_count))
-    time_scale = list(range(observation_length))
-    time_scale += [0] * (observation_length - len(cell_count))
-    color_dict = {
-        0: 'green',
-        1: 'red',
-    }
-    color = color_dict[channel_index]
-    # We want the lower band, the higher band, and the actual value.
-    input_axis.plot(time_scale, cell_count, color=color)
-
-
-def plot_cellular_signal(channel_one_stats, channel_two_stats):
-    fig = plt.figure()
-    canvas = FigureCanvasAgg(fig)
-    plt.title('Cellular Signal')
-    channel_one_median = [stat[0] for stat in channel_one_stats]
-    channel_one_std_dev = [stat[1] for stat in channel_one_stats]
-    channel_two_median = [stat[0] for stat in channel_two_stats]
-    channel_two_std_dev = [stat[1] for stat in channel_two_stats]
-    channel_one_pos = np.add(channel_one_median, channel_one_std_dev)
-    channel_one_neg = np.subtract(channel_one_median, channel_one_std_dev)
-    channel_two_pos = np.add(channel_two_median, channel_two_std_dev)
-    channel_two_neg = np.subtract(channel_two_median, channel_two_std_dev)
-    channel_one_neg = np.where(channel_one_neg < 0, 0, channel_one_neg)
-    channel_two_neg = np.where(channel_two_neg < 0, 0, channel_two_neg)
-    time_scale = range(len(channel_one_stats))
-    # We want the lower band, the higher band, and the actual value.
-    plt.fill_between(
-        time_scale,
-        channel_one_pos,
-        channel_one_neg,
-        alpha=.5,
-        color='green',
-    )
-    plt.fill_between(
-        time_scale,
-        channel_two_pos,
-        channel_two_neg,
-        alpha=.5,
-        color='red',
-    )
-    plt.plot(time_scale, channel_one_median, color='green')  #
-    plt.plot(time_scale, channel_two_median, color='red')  #
-    canvas.draw()
-    buf = canvas.buffer_rgba()
-    return buf
-
-
-# def plot_signal_histogram(
-#         segmentation_result,
-#         observation_index,
-#         frame_index,
-#         axis,
-#         plot_name,
-# ):
-#     '''
-#
-#     Returns:
-#
-#     '''
-#     axis.set_title(plot_name)
-#     for channel_index, channel in enumerate(segmentation_result.cell_signal_auxiliary_frames):
-#         print(frame_index)
-#         p_hist, p_bins = np.histogram(segmentation_result.cell_signal_auxiliary_frames[observation_index][
-#         channel_index][frame_index], bins=100)
-#         center = (p_bins[:-1] + p_bins[1:]) / 2
-#         color_dict = {
-#             0: 'green',
-#             1: 'red',
-#         }
-#         color = color_dict[channel_index]
-#         axis.bar(center, p_hist, align='center', width=100, color=color)
-#     axis.set_xlim([0, 100])
-#     axis.set_ylim([0, 1000000])
-#     axis.set_xticklabels([])
-#     axis.set_yticklabels([])
-
-
-def generate_image_canvas(
-        processed_frame: np.ndarray,
-        raw_frame: np.ndarray,
-        stats_list: List,
-        title: str,
-):
-    fig = plt.figure(figsize=(13, 6))
-    canvas = FigureCanvasAgg(fig)
-    grid = plt.GridSpec(7, 6, hspace=0.0, wspace=0.0)
-    plt.title(f'{title}')
-    # Padding the Array to our final point
-    # stats_list += [[(0, 0, 0), (0, 0, 0)]] * (stats_final_size - len(stats_list))
-    axis_1 = fig.add_subplot(grid[:6, :5])
-    axis_2 = fig.add_subplot(grid[0:3, 4:6])
-    axis_3 = fig.add_subplot(grid[3:6, 4:6])
-    axis_4 = fig.add_subplot(grid[6:7, :])
-    # axis_5 = fig.add_subplot(grid[6:7, 3:6])
-    c1_stats, c2_stats = stat_splitter(stats_list)
-    cell_signal = plot_cellular_signal(c1_stats, c2_stats)
-    cell_count = plot_cell_count(c1_stats, c2_stats)
-    # TODO: Work via Mutation.
-    plot_signal_histogram(processed_frame, raw_frame, axis_4, 'Processed Frame')
-    plot_histogram_notebook(raw_frame)
-    array_list = [processed_frame, cell_signal, cell_count]
-    axis_list = [axis_1, axis_2, axis_3]
-    for array, axis in zip(array_list, axis_list):
-        axis.imshow(array, interpolation='nearest')
-        plt.axis('off')
-        axis.set_xticklabels([])
-        axis.set_yticklabels([])
-        axis.set_aspect('equal')
-    plt.tight_layout()
-    plt.text(0.1, 0.9, 'matplotlib', ha='center', va='center')
-    canvas.draw()
-    buf = canvas.buffer_rgba()
-    plt.close(fig)
-    return np.asarray(buf)
 
 
 def generate_segmentation_visualization(
