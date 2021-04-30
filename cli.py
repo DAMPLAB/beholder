@@ -30,6 +30,8 @@ from typing import (
     List,
     Tuple,
 )
+import warnings
+
 
 import bioformats as bf
 import javabridge
@@ -57,10 +59,9 @@ from beholder.signal_processing import (
     label_cells,
     draw_mask,
     fluorescence_detection,
-    generate_image_canvas,
     generate_segmentation_visualization,
     debug_image,
-
+    fluorescence_filtration,
 )
 from beholder.ds import (
     TiffPackage,
@@ -71,6 +72,10 @@ from beholder.signal_processing.sigpro_utility import (
     get_channel_data_from_xml_metadata,
     ingress_tiff_file,
 )
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore")
 
 console = Console()
 app = typer.Typer()
@@ -150,6 +155,22 @@ def preprocess_color_channel(
     return out_frame
 
 
+def find_contours_aux_channel(
+        aux_frame: np.ndarray,
+):
+    out_frame = downsample_image(aux_frame)
+    out_frame = clahe_filter(out_frame)
+    out_frame = percentile_threshold(out_frame)
+    out_frame = invert_image(out_frame)
+    out_frame = erosion_filter(out_frame)
+    out_frame = remove_background(out_frame)
+    out_frame = normalize_frame(out_frame)
+    out_frame = unsharp_mask(out_frame)
+    contours = find_contours(out_frame)
+    return contours
+
+
+
 def contour_filtration(contours):
     filtered_contours = cellular_highpass_filter(contours)
     return filtered_contours
@@ -183,6 +204,7 @@ def segmentation_pipeline(
         packaged_tiff.cell_signal_auxiliary_frames.append([])
         packaged_tiff.frame_stats.append([])
         packaged_tiff.labeled_auxiliary_frames.append([])
+        packaged_tiff.auxiliary_frame_contours.append([])
     for frame_index in range(primary_channel.shape[0]):
         # Handle the primary frame. We use the primary frame to color stuff in.
         primary_frame = primary_channel[frame_index]
@@ -191,7 +213,7 @@ def segmentation_pipeline(
             primary_frame
         )
         prime_contours = contour_filtration(prime_contours)
-        packaged_tiff.processed_primary_frames.append(prime_contours)
+        packaged_tiff.primary_frame_contours.append(prime_contours)
         mask_frame = generate_mask(primary_frame, prime_contours)
         packaged_tiff.mask_frames.append(mask_frame)
         # Now we iterate over the other channels.
@@ -207,9 +229,20 @@ def segmentation_pipeline(
             )
             debug_visualization(aux_processed_output, f'Aux Frame {aux_channel_index}')
             aux_frame_container.append(aux_processed_output)
+        # -------------------- FIND AUXILIARY FRAME CONTOURS -------------------
+        for aux_channel_index in range(auxiliary_channels.shape[0]):
+            aux_frame = auxiliary_channels[aux_channel_index][frame_index]
+            aux_cont = contour_filtration(find_contours_aux_channel(aux_frame))
+            packaged_tiff.auxiliary_frame_contours[aux_channel_index].append(aux_cont)
         # ---------- CORRELATING CELL CONTOURS TO FLUORESCENCE SIGNAL ----------
         for aux_channel_index in range(auxiliary_channels.shape[0]):
             aux_frame = auxiliary_channels[aux_channel_index][frame_index]
+            fluorescence_filtration(
+                grayscale_frame=primary_frame,
+                fluorescent_frame=aux_frame,
+                primary_contour_list=prime_contours,
+                aux_contour_list=packaged_tiff.auxiliary_frame_contours[aux_channel_index][frame_index]
+            )
             correlated_cells = fluorescence_detection(
                 primary_frame,
                 aux_frame,
@@ -267,9 +300,11 @@ def enqueue_segmentation(input_fp: str):
     tiff_path = os.path.join(input_fp, 'raw_tiffs')
     tiff_fp = glob.glob(tiff_path + '**/*.tiff')
     sorted_tiffs = sorted(tiff_fp, key=lambda x: int(Path(x).stem))
+    # ------------------------------- PACKAGING TIFFS  -------------------------
     for index, tiff_file in tqdm.tqdm(
             enumerate(sorted_tiffs),
-            total=len(sorted_tiffs)
+            total=len(sorted_tiffs),
+            desc="Packaging Tiffs"
     ):
         array = ingress_tiff_file(tiff_file)
         if not array.shape[0]:
@@ -295,7 +330,8 @@ def enqueue_segmentation(input_fp: str):
                     segmentation_pipeline,
                     packaged_tiffs
                 ),
-                total=len(packaged_tiffs)
+                total=len(packaged_tiffs),
+                desc="Performing Segmentation"
             )
         )
     else:
@@ -328,6 +364,7 @@ def enqueue_segmentation(input_fp: str):
             for index, segmentation_result in tqdm.tqdm(
                     enumerate(segmentation_results),
                     leave=False,
+                    desc="Generating Frame Results"
             ):
                 input_args = index, segmentation_result, output_location
                 generate_frame_visualization(input_args)
@@ -338,7 +375,7 @@ def enqueue_segmentation(input_fp: str):
                         generate_frame_visualization,
                         arg_tuple,
                     ),
-                    desc="Generating Visualizations...",
+                    desc="Generating Visualizations",
                     total=len(segmentation_results)
                 )
 
@@ -421,10 +458,10 @@ def convert_nd2_to_tiffs(
 
 @app.command()
 def segmentation(
-        input_directory: str = '/media/prime/beholder_output',
+        input_directory: str = '/mnt/core2/beholder_output',
         render_videos: bool = True,
         logging: bool = True,
-        filter_criteria: int = None,
+        filter_criteria: int = 3,
 ):
     """
 

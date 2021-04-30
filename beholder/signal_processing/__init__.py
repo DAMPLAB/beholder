@@ -38,11 +38,11 @@ from .sigpro_utility import (
 from .stats import (
     CellSignal,
     fluorescence_detection,
+    fluorescence_filtration,
     generate_arbitrary_stats,
 )
 from .graphing import (
     draw_mask,
     label_cells,
-    generate_image_canvas,
     generate_segmentation_visualization,
 )
