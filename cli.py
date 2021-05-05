@@ -1,76 +1,37 @@
 '''
 --------------------------------------------------------------------------------
-Description:
-
-TODO:
-    - [x] Batch Conversion Fixed. Have it be an alternative path in Typer.
-    - [x] Persist metadata from conversion of ND2 to file in output directory
-        per split ND2 file.
-    - [ ] Plumb FrameSeries together with our new way of determining microscopy
-            data from ImageJ. We should also use this to get the indices and
-            what not from the channel names.
-    - [ ] Put together the pipeline and actually make it run.
-
-Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
+Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2021
 --------------------------------------------------------------------------------
 '''
-import copy
-import csv
-import dataclasses
 import functools
-import glob
 import multiprocessing as mp
 import operator
 import os
-import xml.etree.ElementTree as ET
-from pathlib import Path
 import subprocess
 import sys
+import warnings
+import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import (
     List,
-    Tuple,
 )
-import warnings
 
-
-import bioformats as bf
-import javabridge
-import numpy as np
-import tqdm
 import typer
 from rich.console import Console
 from simple_term_menu import TerminalMenu
 
-from beholder.signal_processing import (
-    apply_brightness_contrast,
-    cellular_highpass_filter,
-    combine_frame,
-    colorize_frame,
-    downsample_image,
-    clahe_filter,
-    percentile_threshold,
-    invert_image,
-    erosion_filter,
-    remove_background,
-    normalize_frame,
-    unsharp_mask,
-    find_contours,
-    generate_arbitrary_stats,
-    label_cells,
-    draw_mask,
-    fluorescence_detection,
-    generate_segmentation_visualization,
-    debug_image,
-    fluorescence_filtration,
-)
-from beholder.ds import (
-    TiffPackage,
-    StatisticResults,
+from beholder.pipelines import (
+    enqueue_segmentation,
+    enqueue_frame_stabilization,
+    enqueue_nd2_conversion,
 )
 from beholder.signal_processing.sigpro_utility import (
     nd2_convert,
     get_channel_data_from_xml_metadata,
-    ingress_tiff_file,
+)
+from beholder.utils import (
+    ConfigOptions,
+    beholder_text
 )
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -80,30 +41,8 @@ warnings.filterwarnings("ignore")
 console = Console()
 app = typer.Typer()
 
-RENDER_VIDEOS = True
-PROCESSES = mp.cpu_count() - 1
-COLOR_LUT = {
-    'PhC': 'grey',
-    'm-Cherry': 'red',
-    'DAPI1': 'green',
-    'YFP': 'yellow',
-}
-SINGLE_THREAD_DEBUG = True
-VISUALIZATION_DEBUG = False
-
 
 # ----------------------- Command Line Utility Functions -----------------------
-def beholder_text(input_text: str, color: str = '#49306B'):
-    """
-
-    Args:
-        input_text:
-        color:
-
-    Returns:
-
-    """
-    console.print(input_text, style=color)
 
 
 def validate_dir_path(input_fp: str):
@@ -111,273 +50,6 @@ def validate_dir_path(input_fp: str):
         raise RuntimeError(
             f'Unable to locate {input_fp}. Please check input and try again.'
         )
-
-
-def generate_mask(input_frame: np.ndarray, contours):
-    out_frame = draw_mask(
-        input_frame,
-        contours,
-        colouration='rainbow',
-    )
-    return out_frame
-
-
-# ---------------------------- Segmentation Pipeline ---------------------------
-def preprocess_primary_frame_and_find_contours(initial_frame: np.ndarray):
-    # Each image transform should be giving us back an np.ndarray of the same
-    # shape and size.
-    # out_frame = signal_transform.lip_removal(initial_frame)
-    out_frame = downsample_image(initial_frame)
-    out_frame = clahe_filter(out_frame)
-    out_frame = percentile_threshold(out_frame)
-    out_frame = invert_image(out_frame)
-    out_frame = erosion_filter(out_frame)
-    out_frame = remove_background(out_frame)
-    out_frame = normalize_frame(out_frame)
-    out_frame = unsharp_mask(out_frame)
-    contours = find_contours(out_frame)
-    return contours
-
-
-def preprocess_color_channel(
-        initial_frame: np.ndarray,
-        color: str,
-        alpha: float = 12,
-        beta: int = 0,
-):
-    out_frame = downsample_image(initial_frame)
-    out_frame = apply_brightness_contrast(
-        out_frame,
-        alpha,
-        beta,
-    )
-    out_frame = colorize_frame(out_frame, color)
-    return out_frame
-
-
-def find_contours_aux_channel(
-        aux_frame: np.ndarray,
-):
-    out_frame = downsample_image(aux_frame)
-    out_frame = clahe_filter(out_frame)
-    out_frame = percentile_threshold(out_frame)
-    out_frame = invert_image(out_frame)
-    out_frame = erosion_filter(out_frame)
-    out_frame = remove_background(out_frame)
-    out_frame = normalize_frame(out_frame)
-    out_frame = unsharp_mask(out_frame)
-    contours = find_contours(out_frame)
-    return contours
-
-
-
-def contour_filtration(contours):
-    filtered_contours = cellular_highpass_filter(contours)
-    return filtered_contours
-
-
-def generate_frame_visualization(input_arguments: Tuple[int, TiffPackage, str]):
-    index, result, filepath = input_arguments
-    return generate_segmentation_visualization(
-        filename=filepath,
-        observation_index=index,
-        packed_tiff=result,
-    )
-
-
-def debug_visualization(input_frame: np.ndarray, name: str):
-    if VISUALIZATION_DEBUG:
-        print(f'Debug for {name}')
-        print(f'Total Value for Frames {np.sum(input_frame)}')
-        print(f'Shape of Array {input_frame.shape}')
-        debug_image(input_frame, name)
-        print('------')
-
-
-def segmentation_pipeline(
-        packaged_tiff: TiffPackage,
-):
-    primary_channel = copy.copy(packaged_tiff.img_array[0])
-    auxiliary_channels = copy.copy(packaged_tiff.img_array[1:])
-    # ------ SPLITTING OUT THE INPUT DATASTRUCTURE AND INITIAL PROCESSING ------
-    for aux_channel_index in range(auxiliary_channels.shape[0]):
-        packaged_tiff.cell_signal_auxiliary_frames.append([])
-        packaged_tiff.frame_stats.append([])
-        packaged_tiff.labeled_auxiliary_frames.append([])
-        packaged_tiff.auxiliary_frame_contours.append([])
-    for frame_index in range(primary_channel.shape[0]):
-        # Handle the primary frame. We use the primary frame to color stuff in.
-        primary_frame = primary_channel[frame_index]
-        debug_visualization(primary_frame, 'Primary Frame Initial')
-        prime_contours = preprocess_primary_frame_and_find_contours(
-            primary_frame
-        )
-        prime_contours = contour_filtration(prime_contours)
-        packaged_tiff.primary_frame_contours.append(prime_contours)
-        mask_frame = generate_mask(primary_frame, prime_contours)
-        packaged_tiff.mask_frames.append(mask_frame)
-        # Now we iterate over the other channels.
-        aux_frame_container = []
-        for aux_channel_index in range(auxiliary_channels.shape[0]):
-            # Offset as we assume Channel Zero is our primary (typically grey)
-            # frame.
-            color = COLOR_LUT[packaged_tiff.channel_names[aux_channel_index + 1]]
-            aux_frame = auxiliary_channels[aux_channel_index][frame_index]
-            aux_processed_output = preprocess_color_channel(
-                aux_frame,
-                color,
-            )
-            debug_visualization(aux_processed_output, f'Aux Frame {aux_channel_index}')
-            aux_frame_container.append(aux_processed_output)
-        # -------------------- FIND AUXILIARY FRAME CONTOURS -------------------
-        for aux_channel_index in range(auxiliary_channels.shape[0]):
-            aux_frame = auxiliary_channels[aux_channel_index][frame_index]
-            aux_cont = contour_filtration(find_contours_aux_channel(aux_frame))
-            packaged_tiff.auxiliary_frame_contours[aux_channel_index].append(aux_cont)
-        # ---------- CORRELATING CELL CONTOURS TO FLUORESCENCE SIGNAL ----------
-        for aux_channel_index in range(auxiliary_channels.shape[0]):
-            aux_frame = auxiliary_channels[aux_channel_index][frame_index]
-            fluorescence_filtration(
-                grayscale_frame=primary_frame,
-                fluorescent_frame=aux_frame,
-                primary_contour_list=prime_contours,
-                aux_contour_list=packaged_tiff.auxiliary_frame_contours[aux_channel_index][frame_index]
-            )
-            correlated_cells = fluorescence_detection(
-                primary_frame,
-                aux_frame,
-                prime_contours,
-            )
-            packaged_tiff.cell_signal_auxiliary_frames[aux_channel_index].append(correlated_cells)
-        frame_stats = generate_arbitrary_stats(
-            packaged_tiff.cell_signal_auxiliary_frames
-        )
-        for aux_channel_index in range(auxiliary_channels.shape[0]):
-            packaged_tiff.frame_stats[aux_channel_index].append(frame_stats[aux_channel_index])
-        # --------------- LABELING FRAMES WITH DETECTED SIGNALS ----------------
-        for aux_channel_index in range(auxiliary_channels.shape[0]):
-            aux_frame = auxiliary_channels[aux_channel_index][frame_index]
-            debug_visualization(aux_frame, 'Non-Downsampled Aux Frame')
-            debug_visualization(downsample_image(aux_frame), 'Downsampled Aux Frame')
-            out_label = label_cells(
-                downsample_image(aux_frame),
-                prime_contours,
-                frame_stats[aux_channel_index][frame_index],
-            )
-            debug_visualization(out_label, 'Out Label')
-            packaged_tiff.labeled_auxiliary_frames[aux_channel_index].append(out_label)
-        # ---------------- COMBINING FRAMES FOR VISUALIZATION  -----------------
-        out_frame = downsample_image(primary_frame)
-        for aux_channel_index in range(auxiliary_channels.shape[0]):
-            color = COLOR_LUT[packaged_tiff.channel_names[aux_channel_index + 1]]
-            labeled_frame = packaged_tiff.labeled_auxiliary_frames[aux_channel_index][frame_index]
-            debug_visualization(labeled_frame, 'Raw Pull of Labeled Frame')
-            labeled_frame = colorize_frame(labeled_frame, color)
-            debug_visualization(labeled_frame, 'Colorization of Labeled Frame')
-            out_frame = combine_frame(
-                out_frame,
-                labeled_frame,
-            )
-        debug_visualization(out_frame, 'Final Frame')
-        packaged_tiff.final_frames.append(out_frame)
-    return packaged_tiff
-
-
-def enqueue_segmentation(input_fp: str):
-    # We should have a top level metadata xml file and then we have a directory
-    # called raw_tiffs that has all of the stuff that we really need to work on.
-    # We need to take the xml file and extract the channels, sizes, and
-    # resolutions and use that to create a class object that can encapuslate the
-    # logic related to segmenting tiffs of various dimensions and properties.
-    global SINGLE_THREAD_DEBUG
-    metadata_fp = os.path.join(input_fp, 'metadata.xml')
-    tree = ET.parse(metadata_fp)
-    # This assumes that everyone has the same amount of channels.
-    # If we get to the point where ND2 files have different channels WITHIN
-    # themselves I'm throwing my computer into the Charles...
-    channels = get_channel_data_from_xml_metadata(tree)
-    packaged_tiffs = []
-    tiff_path = os.path.join(input_fp, 'raw_tiffs')
-    tiff_fp = glob.glob(tiff_path + '**/*.tiff')
-    sorted_tiffs = sorted(tiff_fp, key=lambda x: int(Path(x).stem))
-    # ------------------------------- PACKAGING TIFFS  -------------------------
-    for index, tiff_file in tqdm.tqdm(
-            enumerate(sorted_tiffs),
-            total=len(sorted_tiffs),
-            desc="Packaging Tiffs"
-    ):
-        array = ingress_tiff_file(tiff_file)
-        if not array.shape[0]:
-            continue
-        wavelengths = [x[0] for x in channels[index]]
-        channel_names = [x[1] for x in channels[index]]
-        title = Path(tiff_file).stem
-        inner_pack = TiffPackage(
-            img_array=array,
-            tiff_name=title,
-            channel_names=channel_names,
-            channel_wavelengths=wavelengths,
-        )
-        packaged_tiffs.append(inner_pack)
-    # ---------------------------- PERFORM SEGMENTATION  -----------------------
-    output_location = os.path.join(input_fp, 'segmentation_output')
-    if not os.path.exists(output_location):
-        os.mkdir(output_location)
-    if SINGLE_THREAD_DEBUG:
-        segmentation_results = list(
-            tqdm.tqdm(
-                map(
-                    segmentation_pipeline,
-                    packaged_tiffs
-                ),
-                total=len(packaged_tiffs),
-                desc="Performing Segmentation"
-            )
-        )
-    else:
-        with mp.get_context("spawn").Pool(processes=PROCESSES) as pool:
-            segmentation_results = list(
-                tqdm.tqdm(
-                    pool.imap(segmentation_pipeline, packaged_tiffs),
-                    total=len(packaged_tiffs)
-                )
-            )
-    # ------------------- EXIT GRACEFULLY IF SEGMENTATION FAILED  --------------
-    if not segmentation_results:
-        return
-    # ---------------- ENSURE OUTPUT DIRECTORY EXISTS AND WRITE OUT  -----------
-    # TODO: ENSURE THAT THIS GUY IS SETUP RIGHT. IT SHOULD BE A LIST PER CHANNEL.
-    for i, result in enumerate(tqdm.tqdm(segmentation_results)):
-        for j, channel_result in enumerate(result.cell_signal_auxiliary_frames):
-            frame_output = os.path.join(output_location, f'{i + 1}')
-            channel_name = result.channel_names[j + 1]
-            csv_location = os.path.join(frame_output, f'{i + 1}_{channel_name}.csv')
-            if not os.path.exists(frame_output):
-                os.mkdir(frame_output)
-            with open(csv_location, 'a') as out_file:
-                writer = csv.writer(out_file)
-                for frame_result in channel_result:
-                    writer.writerow([k.sum_signal for k in frame_result])
-    if RENDER_VIDEOS:
-        arg_tuple = range(len(segmentation_results)), segmentation_results, output_location
-        if SINGLE_THREAD_DEBUG:
-            for index, segmentation_result in tqdm.tqdm(
-                    enumerate(segmentation_results),
-                    leave=False,
-                    desc="Generating Frame Results"
-            ):
-                input_args = index, segmentation_result, output_location
-                generate_frame_visualization(input_args)
-        else:
-            with mp.get_context("spawn").Pool(processes=PROCESSES) as pool:
-                tqdm.tqdm(
-                    pool.imap(
-                        generate_frame_visualization,
-                        arg_tuple,
-                    ),
-                    desc="Generating Visualizations",
-                    total=len(segmentation_results)
-                )
 
 
 def filter_inputs_based_on_channel(
@@ -401,81 +73,20 @@ def filter_inputs_based_on_channel(
     return True
 
 
-# ---------------------------- Application Commands ----------------------------
-@app.command()
-def convert_nd2_to_tiffs(
-        input_directory: str = '/media/prime/microscopy_images/sam_2021',
-        output_directory: str = '/media/prime/beholder_output',
-        logging: bool = True,
-):
+# ------------------------ Terminal Rendering Commands -------------------------
+def dataset_selection(
+        input_directory: str,
+        filter_criteria: int = None,
+) -> List[str]:
     """
-
+    
     Args:
         input_directory:
-        output_directory:
-        logging:
-
-    Returns:
-
-    """
-    for dir_path in [input_directory, output_directory]:
-        validate_dir_path(dir_path)
-    selection_list = ['all']
-    file_paths = glob.iglob(input_directory + '**/*.nd2', recursive=True)
-    files_and_sizes = ((path, os.path.getsize(path)) for path in file_paths)
-    sorted_files_with_size = sorted(files_and_sizes, key=operator.itemgetter(1))
-    clean_filepaths = [file_path for file_path, _ in sorted_files_with_size]
-    file_names = [Path(file_path).stem for file_path in clean_filepaths]
-    for file_name in file_names:
-        selection_list.append(file_name)
-    terminal_menu = TerminalMenu(
-        selection_list,
-        multi_select=True,
-        show_multi_select_hint=True,
-    )
-    menu_entry_indices = terminal_menu.show()
-    if 'all' in terminal_menu.chosen_menu_entries:
-        conversion_list = clean_filepaths
-    else:
-        out_list = []
-        for index in menu_entry_indices:
-            # Offsetting the 'All' that we started the list with.
-            index = index - 1
-            out_list.append(clean_filepaths[index])
-        conversion_list = out_list
-    # We have our selected input files and now we have to make sure that they
-    # have a home...
-    for index, input_fp in enumerate(conversion_list):
-        if logging:
-            beholder_text(
-                f'Converting {Path(input_fp).stem} to Tiff Files.. ({index}/{len(conversion_list)}).'
-            )
-        out_dir = os.path.join(output_directory, Path(input_fp).stem)
-        if not os.path.exists(out_dir):
-            os.mkdir(out_dir)
-        nd2_convert(input_fp, out_dir)
-
-
-@app.command()
-def segmentation(
-        input_directory: str = '/mnt/core2/beholder_output',
-        render_videos: bool = True,
-        logging: bool = True,
-        filter_criteria: int = 3,
-):
-    """
-
-    Args:
-        input_directory:
-        render_videos:
-        logging:
         filter_criteria:
 
     Returns:
 
     """
-    global RENDER_VIDEOS
-    RENDER_VIDEOS = render_videos
     for dir_path in [input_directory]:
         validate_dir_path(dir_path)
     input_directories = []
@@ -505,6 +116,9 @@ def segmentation(
         show_multi_select_hint=True,
     )
     menu_entry_indices = terminal_menu.show()
+    if terminal_menu.chosen_menu_entries is None:
+        beholder_text('Exit Recognized. Have a nice day!')
+        exit(0)
     if 'all' in terminal_menu.chosen_menu_entries:
         segmentation_list = input_directories
         segmentation_list.pop(0)
@@ -515,6 +129,33 @@ def segmentation(
             index = index - 1
             out_list.append(input_directories[index])
         segmentation_list = out_list
+    return segmentation_list
+
+
+# -------------------------- Date Generation Commands --------------------------
+@app.command()
+def segmentation(
+        input_directory: str = '/mnt/core2/beholder_output',
+        render_videos: bool = True,
+        logging: bool = True,
+        filter_criteria: int = 3,
+):
+    """
+
+    Args:
+        input_directory:
+        render_videos:
+        logging:
+        filter_criteria:
+
+    Returns:
+
+    """
+    ConfigOptions(render_videos=render_videos)
+    segmentation_list = dataset_selection(
+        input_directory=input_directory,
+        filter_criteria=filter_criteria,
+    )
     # We have our selected input files and now we have to make sure that they
     # have a home...
     for index, input_directory in enumerate(segmentation_list):
@@ -528,6 +169,62 @@ def segmentation(
             )
         enqueue_segmentation(input_directory)
     typer.Exit()
+
+
+@app.command()
+def calculate_frame_drift(
+        input_directory: str = '/mnt/core2/beholder_output',
+        render_videos: bool = True,
+        logging: bool = True,
+        filter_criteria: int = 3,
+):
+    # We should use our standard tooling for determining the input directory.
+    # Once we have our input directories, we feed them into our stabilization
+    # function. Our stabilization function should output a JSON with a list
+    # of xy transforms for each of the observation sets. We then use that
+    # stabilization data during cell-flow, cell-tracking, and segmentation.
+    stabilization_list = dataset_selection(
+        input_directory=input_directory,
+        filter_criteria=filter_criteria,
+    )
+    # We have our selected input files and now we have to make sure that they
+    # have a home...
+    for index, input_directory in enumerate(stabilization_list):
+        if logging:
+            beholder_text(
+                f'⬤ Starting Frame-Shift Calculation Pipeline for '
+                f'{Path(input_directory).stem}... ({index}/{len(stabilization_list)})'
+            )
+            beholder_text(
+                '-' * 88
+            )
+        enqueue_frame_stabilization(input_directory)
+    typer.Exit()
+
+
+# ------------------------------ Utility Commands ------------------------------
+@app.command()
+def convert_nd2_to_tiffs(
+        input_directory: str = '/mnt/core2/microscopy_images/sam_2021',
+        output_directory: str = '/mnt/core2/beholder_output',
+        filter_criteria: int = None,
+        logging: bool = True,
+):
+    """
+
+    Args:
+        input_directory:
+        output_directory:
+        logging:
+
+    Returns:
+
+    """
+    conversion_list = dataset_selection(
+        input_directory=input_directory,
+        filter_criteria=filter_criteria,
+    )
+    enqueue_nd2_conversion(conversion_list, output_directory)
 
 
 @app.command()
@@ -587,6 +284,5 @@ def s3_sync_download(
 
 
 if __name__ == "__main__":
-    javabridge.start_vm(class_path=bf.JARS)
     mp.set_start_method("spawn")
     app()

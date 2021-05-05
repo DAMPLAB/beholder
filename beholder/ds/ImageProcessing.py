@@ -21,6 +21,7 @@ class TiffPackage:
     tiff_name: str
     channel_names: List[str]
     channel_wavelengths: List[str]
+    tiff_index: int = 0
     processed_array: List[np.ndarray] = None
     processed_frame_correlation: List[Tuple] = None
     output_statistics: List[Tuple] = None
@@ -68,6 +69,17 @@ class TiffPackage:
 
         """
         return len(self.cell_signal_auxiliary_frames)
+
+    def get_raw_frame(self, channel: int, frame_num: int) -> np.ndarray:
+        return self.img_array[channel][frame_num]
+
+    def get_frame_height(self):
+        # Assumes uniform frame dimension.
+        return self.get_raw_frame(0, 0).shape[0]
+
+    def get_frame_width(self):
+        # Assumes uniform frame dimension.
+        return self.get_raw_frame(0, 0).shape[1]
 
 
 @dataclasses.dataclass
