@@ -397,7 +397,26 @@ def histogram_equalization(input_frame: np.ndarray):
     return cv2.equalizeHist(out_frame)
 
 
+def eight_bit_plane_slice(input_frame: np.ndarray):
+    out = []
+    for k in range(0, 8):
+        # create an image for each k bit plane
+        plane = np.full((input_frame.shape[0], input_frame.shape[1]), 2 ** k, np.uint8)
+        # execute bitwise and operation
+        res = cv2.bitwise_and(plane, input_frame)
+        # multiply ones (bit plane sliced) with 255 just for better visualization
+        x = res * 255
+        # append to the output list
+        out.append(x)
+    return out
+
+
 # ----------------------------------- Filters ----------------------------------
+def bilateral_filter(
+        input_frame: np.ndarray,
+):
+    pass
+
 def erosion_filter(
         input_frame: np.ndarray,
         kernel_size: Tuple = (1, 1),
@@ -415,6 +434,26 @@ def erosion_filter(
     '''
     kernel = np.ones(kernel_size, np.uint8)
     return cv2.erode(input_frame, kernel, iterations=iterations)
+
+
+def closing_filter(
+        input_frame: np.ndarray,
+        kernel_size: Tuple = (1, 1),
+        iterations: int = 1,
+):
+    '''
+
+    Args:
+        input_frame:
+        kernel_size:
+        iterations:
+
+    Returns:
+
+    '''
+    kernel = np.ones(kernel_size, np.uint8)
+    return cv2.erode(input_frame, kernel, iterations=iterations)
+
 
 
 def cellular_highpass_filter(contours):
