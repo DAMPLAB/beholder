@@ -1,17 +1,6 @@
 '''
 --------------------------------------------------------------------------------
-Description:
-
-TODO:
-    - [x] Batch Conversion Fixed. Have it be an alternative path in Typer.
-    - [x] Persist metadata from conversion of ND2 to file in output directory
-        per split ND2 file.
-    - [ ] Plumb FrameSeries together with our new way of determining microscopy
-            data from ImageJ. We should also use this to get the indices and
-            what not from the channel names.
-    - [ ] Put together the pipeline and actually make it run.
-
-Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
+Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2021
 --------------------------------------------------------------------------------
 '''
 import functools
@@ -27,8 +16,6 @@ from typing import (
     List,
 )
 
-import bioformats as bf
-import javabridge
 import typer
 from rich.console import Console
 from simple_term_menu import TerminalMenu
@@ -36,6 +23,7 @@ from simple_term_menu import TerminalMenu
 from beholder.pipelines import (
     enqueue_segmentation,
     enqueue_frame_stabilization,
+    enqueue_nd2_conversion,
 )
 from beholder.signal_processing.sigpro_utility import (
     nd2_convert,
@@ -43,6 +31,7 @@ from beholder.signal_processing.sigpro_utility import (
 )
 from beholder.utils import (
     ConfigOptions,
+    beholder_text
 )
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -52,18 +41,8 @@ warnings.filterwarnings("ignore")
 console = Console()
 app = typer.Typer()
 
+
 # ----------------------- Command Line Utility Functions -----------------------
-def beholder_text(input_text: str, color: str = '#49306B'):
-    """
-
-    Args:
-        input_text:
-        color:
-
-    Returns:
-
-    """
-    console.print(input_text, style=color)
 
 
 def validate_dir_path(input_fp: str):
@@ -137,6 +116,9 @@ def dataset_selection(
         show_multi_select_hint=True,
     )
     menu_entry_indices = terminal_menu.show()
+    if terminal_menu.chosen_menu_entries is None:
+        beholder_text('Exit Recognized. Have a nice day!')
+        exit(0)
     if 'all' in terminal_menu.chosen_menu_entries:
         segmentation_list = input_directories
         segmentation_list.pop(0)
@@ -210,7 +192,7 @@ def calculate_frame_drift(
     for index, input_directory in enumerate(stabilization_list):
         if logging:
             beholder_text(
-                f'⬤ Starting  Pipeline for '
+                f'⬤ Starting Frame-Shift Calculation Pipeline for '
                 f'{Path(input_directory).stem}... ({index}/{len(stabilization_list)})'
             )
             beholder_text(
@@ -223,8 +205,8 @@ def calculate_frame_drift(
 # ------------------------------ Utility Commands ------------------------------
 @app.command()
 def convert_nd2_to_tiffs(
-        input_directory: str = '/media/prime/microscopy_images/sam_2021',
-        output_directory: str = '/media/prime/beholder_output',
+        input_directory: str = '/mnt/core2/microscopy_images/sam_2021',
+        output_directory: str = '/mnt/core2/beholder_output',
         filter_criteria: int = None,
         logging: bool = True,
 ):
@@ -242,17 +224,7 @@ def convert_nd2_to_tiffs(
         input_directory=input_directory,
         filter_criteria=filter_criteria,
     )
-    # We have our selected input files and now we have to make sure that they
-    # have a home...
-    for index, input_fp in enumerate(conversion_list):
-        if logging:
-            beholder_text(
-                f'Converting {Path(input_fp).stem} to Tiff Files.. ({index}/{len(conversion_list)}).'
-            )
-        out_dir = os.path.join(output_directory, Path(input_fp).stem)
-        if not os.path.exists(out_dir):
-            os.mkdir(out_dir)
-        nd2_convert(input_fp, out_dir)
+    enqueue_nd2_conversion(conversion_list, output_directory)
 
 
 @app.command()
@@ -312,6 +284,5 @@ def s3_sync_download(
 
 
 if __name__ == "__main__":
-    javabridge.start_vm(class_path=bf.JARS)
     mp.set_start_method("spawn")
     app()

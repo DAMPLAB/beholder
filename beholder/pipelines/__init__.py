@@ -13,3 +13,6 @@ from .segmentation import (
 from .frame_stabilization import (
     enqueue_frame_stabilization,
 )
+from .nd2_conversion import (
+    enqueue_nd2_conversion,
+)

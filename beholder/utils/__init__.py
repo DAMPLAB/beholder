@@ -14,4 +14,5 @@ from .config import (
     do_single_threaded,
     do_visualization_debug,
     get_max_processes,
+    beholder_text,
 )

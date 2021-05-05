@@ -5,6 +5,8 @@ from typing import (
 
 )
 
+from rich.console import Console
+
 from beholder.utils.gof import SingletonBaseClass
 
 
@@ -16,6 +18,7 @@ class ConfigOptions(metaclass=SingletonBaseClass):
     max_processes: int = mp.cpu_count() - 1
     single_thread_debug: bool = True
     visualization_debug: bool = False
+    test_write: bool = True
 
     def __post_init__(self):
         if self.color_lut is None:
@@ -45,3 +48,20 @@ def do_visualization_debug() -> bool:
 
 def convert_channel_name_to_color(channel_name: str) -> str:
     return ConfigOptions().color_lut[channel_name]
+
+
+def do_test_write() -> bool:
+    return ConfigOptions().test_write
+
+def beholder_text(input_text: str, color: str = '#49306B'):
+    """
+
+    Args:
+        input_text:
+        color:
+
+    Returns:
+
+    """
+    console = Console()
+    console.print(input_text, style=color)
