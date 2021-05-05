@@ -263,6 +263,7 @@ def enqueue_segmentation(input_fp: str):
             tiff_name=title,
             channel_names=channel_names,
             channel_wavelengths=wavelengths,
+            tiff_index=index,
         )
         packaged_tiffs.append(inner_pack)
     # ---------------------------- PERFORM SEGMENTATION  -----------------------

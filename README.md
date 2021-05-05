@@ -9,10 +9,14 @@ The commands are presented in the order in which they should be run:
 - Upload this data to our remote server. (`s3-sync-upload`)
 - (If needed) Download the results to other locations (`s3-sync-download`)
 
-### convert-nd2-to-tiffs 
+### convert-nd2-to-tiffs
+<p align="center">
+  <img width="460" height="300" src="https://cidar-screencast-bucket.s3.amazonaws.com/beholder-conversion.gif">
+</p>
+
 ```
 Example Command: 
-$ poetry run python convert-nd2-to-tiffs --input-directory <ABSOLUTE-PATH-TO-INPUT-DIRECTORY> --output-directory <ABSOLUTE-PATH-TO-OUTPUT-DIRECTORY>
+$ poetry run python cli.py convert-nd2-to-tiffs --input-directory <ABSOLUTE-PATH-TO-INPUT-DIRECTORY> --output-directory <ABSOLUTE-PATH-TO-OUTPUT-DIRECTORY>
 Available Arguments:
     --input-directory: Which directory to get the ND2 files from.
     --output-directory: Which directory to output the converted files to.
@@ -23,9 +27,10 @@ asks which one(s) the user would like to convert into tiff files. If all is
 selected the conversion process will be done on all. This process is required 
 before running the segmentation process.
 ```    
-### segmentation 
+### segmentation
+
 ```
-$ poetry run python segmentation --input-directory <ABSOLUTE-PATH-TO-INPUT-DIRECTORY>
+$ poetry run python cli.py segmentation --input-directory <ABSOLUTE-PATH-TO-INPUT-DIRECTORY>
 
 
 Available Arguments:
@@ -39,9 +44,10 @@ asks which one(s) the user would like to perform segmentation on. If all is
 selected the conversion process will be done on all.
 ```    
 
-### s3-sync-upload 
+### s3-sync-upload
+
 ```
-$ poetry run python s3-sync-upload --input-directory <ABSOLUTE-PATH-TO-INPUT-DIRECTORY> --output-bucket <S3_BUCKET>
+$ poetry run python cli.py s3-sync-upload --input-directory <ABSOLUTE-PATH-TO-INPUT-DIRECTORY> --output-bucket <S3_BUCKET>
 
 
 Available Arguments:
@@ -54,9 +60,10 @@ This should never delete files but will overwrite them if they have the same nam
 and you have a newer copy local to your machine.
 ```    
 
-### s3-sync-download 
+### s3-sync-download
+
 ```
-$ poetry run python s3-sync-download --output-directory <ABSOLUTE-PATH-TO-OUTPUT-DIRECTORY> --input-bucket <S3_BUCKET>
+$ poetry run python cli.py s3-sync-download --output-directory <ABSOLUTE-PATH-TO-OUTPUT-DIRECTORY> --input-bucket <S3_BUCKET>
 
 
 Available Arguments:
