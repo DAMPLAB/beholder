@@ -26,7 +26,6 @@ from beholder.pipelines import (
     enqueue_nd2_conversion,
 )
 from beholder.signal_processing.sigpro_utility import (
-    nd2_convert,
     get_channel_data_from_xml_metadata,
 )
 from beholder.utils import (
