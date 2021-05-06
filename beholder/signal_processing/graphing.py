@@ -505,7 +505,6 @@ def generate_segmentation_visualization(
     Returns:
 
     """
-    print(f'{threading.active_count()=}')
     out_list = []
     obs_viz = ObservationVisualization(
         observation_index=observation_index,
