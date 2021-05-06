@@ -138,9 +138,13 @@ def segmentation(
         input_directory: str = '/mnt/core2/beholder_output',
         render_videos: bool = True,
         logging: bool = True,
-        filter_criteria: int = 3,
+        filter_criteria: int = None,
 ):
     """
+poetry run python cli.py segmentation --input-directory /mnt/core2/beholder_output
+
+3-SR_2_11_10hIPTGON_14hIPTGOFF_TS_MC1
+1-SR_1_9_6hPre-C_1h30aTc_TS_MC2
 
     Args:
         input_directory:
@@ -231,7 +235,7 @@ def convert_nd2_to_tiffs(
 def s3_sync_upload(
         input_directory: str = '/media/core2/beholder_output',
         output_bucket: str = 'beholder-output',
-        results_only: bool = True,
+        results_only: bool = False,
 ):
     """
 
@@ -243,16 +247,20 @@ def s3_sync_upload(
     Returns:
 
     """
+    upload_list = dataset_selection(
+        input_directory=input_directory,
+    )
     beholder_text(f'⬤ Syncing {input_directory} to AWS S3 Bucket {output_bucket}.')
     beholder_text('-' * 88)
-    cmd = ['aws', 's3', 'sync', '--size-only', f'{input_directory}', f's3://{output_bucket}']
-    if results_only:
-        cmd.append('--exclude')
-        cmd.append('*.tiff')
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True) as proc:
-        for stdout_line in proc.stdout:
-            sys.stdout.write(f'{stdout_line}\r')
-            sys.stdout.flush()
+    for upload_dir in upload_list:
+        cmd = ['aws', 's3', 'sync', '--size-only', f'{upload_dir}', f's3://{output_bucket}']
+        if results_only:
+            cmd.append('--exclude')
+            cmd.append('*.tiff')
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True) as proc:
+            for stdout_line in proc.stdout:
+                sys.stdout.write(f'{stdout_line}\r')
+                sys.stdout.flush()
 
 
 @app.command()
