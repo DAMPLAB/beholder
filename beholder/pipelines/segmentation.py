@@ -49,6 +49,7 @@ from beholder.utils.config import (
     convert_channel_name_to_color,
 )
 
+import threading
 # ----------------------- Command Line Utility Functions -----------------------
 def validate_dir_path(input_fp: str):
     if not os.path.isdir(input_fp):
@@ -121,6 +122,7 @@ def contour_filtration(contours):
 
 def generate_frame_visualization(input_arguments: Tuple[int, TiffPackage, str]):
     index, result, filepath = input_arguments
+    print(2.5)
     return generate_segmentation_visualization(
         filename=filepath,
         observation_index=index,
@@ -305,8 +307,11 @@ def enqueue_segmentation(input_fp: str):
                 for frame_result in channel_result:
                     writer.writerow([k.sum_signal for k in frame_result])
     if do_render_videos():
+        print(1)
         arg_tuple = range(len(segmentation_results)), segmentation_results, output_location
         if do_single_threaded():
+            print(2)
+            print(threading.active_count())
             for index, segmentation_result in tqdm.tqdm(
                     enumerate(segmentation_results),
                     leave=False,
