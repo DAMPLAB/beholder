@@ -16,7 +16,6 @@ from pathlib import Path
 import struct
 from xml.etree import ElementTree as ETree
 
-import bioformats as bf
 import cv2
 import javabridge
 import matplotlib.pyplot as plt
@@ -551,69 +550,6 @@ def tiff_splitter(fp: str):
             fn = f'data/raw_tiffs/{base_filename}/{channels[j]}_{i}.tiff'
             tiffile.imsave(fn, frame)
 
-def batch_convert(target_directory: str):
-    file_paths = glob.iglob(target_directory + '**/*.nd2', recursive=True)
-    files_and_sizes = ((path, os.path.getsize(path)) for path in file_paths)
-    sorted_files_with_size = sorted(files_and_sizes, key=operator.itemgetter(1))
-    tiff_directories = []
-    for fp, _ in sorted_files_with_size:
-        tiff_directories.append(nd2_convert(fp))
-    return [item for sublist in tiff_directories for item in sublist]
-
 def grab_tiff_filenames(target_directory: str):
     thing = list(glob.iglob(target_directory + '**/*.tiff', recursive=True))
     return thing
-
-def disable_bioformats_logging():
-    rootLoggerName = javabridge.get_static_field("org/slf4j/Logger",
-                                         "ROOT_LOGGER_NAME",
-                                         "Ljava/lang/String;")
-
-    rootLogger = javabridge.static_call("org/slf4j/LoggerFactory",
-                                "getLogger",
-                                "(Ljava/lang/String;)Lorg/slf4j/Logger;",
-                                rootLoggerName)
-
-    logLevel = javabridge.get_static_field("ch/qos/logback/classic/Level",
-                                   "WARN",
-                                   "Lch/qos/logback/classic/Level;")
-
-    javabridge.call(rootLogger,
-            "setLevel",
-            "(Lch/qos/logback/classic/Level;)V",
-            logLevel)
-
-def nd2_convert(fp: str, output_directory: str):
-    disable_bioformats_logging()
-    metadata = bf.get_omexml_metadata(fp)
-    image_reader = bf.ImageReader(fp, perform_init=True)
-    names, sizes, resolutions = parse_xml_metadata(metadata)
-    tiff_directory = os.path.join(output_directory, 'raw_tiffs')
-    if not os.path.exists(tiff_directory):
-        os.mkdir(tiff_directory)
-    # We assume uniform shape + size for all of our input frames.
-    num_of_frames, x_dim, y_dim, channels = sizes[0]
-    for i in tqdm.tqdm(range(len(names))):
-        output_array = []
-        for j in range(num_of_frames):
-            blank_check = image_reader.read(c=1, t=j, series=i)
-            if np.sum(blank_check) == 0:
-                continue
-            else:
-                channel_array = []
-                for k in range(channels):
-                    temp = image_reader.read(c=k, t=j, series=i)
-                    channel_array.append(temp)
-                output_array.append(channel_array)
-        out_array = np.asarray(output_array)
-        if len(out_array.shape) == 4:
-            out_array = out_array.transpose(1, 0, 2, 3)
-        if len(out_array.shape) == 3:
-            out_array = out_array.transpose(1, 0, 2)
-        save_path = os.path.join(tiff_directory, f'{i}.tiff')
-        tiffile.imsave(save_path, out_array)
-    metadata_save_path = os.path.join(output_directory, f'metadata.xml')
-    # write_xml_metadata(metadata.decode(encoding='utf-8'), metadata_save_path)
-    with open(metadata_save_path, 'w') as out_file:
-        out_file.write(metadata)
-
