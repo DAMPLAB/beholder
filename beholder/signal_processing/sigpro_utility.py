@@ -8,26 +8,21 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
 import glob
-import json
 import math
-import operator
 import os
-from pathlib import Path
 import struct
 from xml.etree import ElementTree as ETree
 
 import cv2
-import javabridge
 import matplotlib.pyplot as plt
-import numpy as np
 import nd2reader
-from pims import ND2_Reader as nd2_sdk
-from PIL import Image
-import tqdm
+import numpy as np
 import tiffile
-from beholder.utils.slack_messaging import slack_message
-import xmltodict
+import tqdm
+from PIL import Image
+from pims import ND2_Reader as nd2_sdk
 
+from beholder.utils.slack_messaging import slack_message
 
 
 # --------------------------- Utility Functionality ----------------------------
