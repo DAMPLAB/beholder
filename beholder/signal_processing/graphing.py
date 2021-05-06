@@ -39,8 +39,11 @@ from beholder.signal_processing.stats import (
     CellStats,
     CellSignal,
 )
-
-SINGLE_THREAD_DEBUG = False
+from beholder.utils.config import (
+    do_single_threaded,
+    do_visualization_debug,
+)
+import threading
 
 
 @dataclasses.dataclass
@@ -147,7 +150,7 @@ class FrameResult:
         fp = os.path.join(self.filepath, file_handle)
         img.save(fp)
         self.labeled_image_fp = fp
-        if SINGLE_THREAD_DEBUG:
+        if do_visualization_debug():
             self.debug_image(
                 self.labeled_image_fp,
                 f'Labeled Image Index: {self.frame_index}',
@@ -196,7 +199,7 @@ class FrameResult:
         plt.savefig(fp)
         self.cell_signal_image_fp = fp
         plt.clf()
-        if SINGLE_THREAD_DEBUG:
+        if do_visualization_debug():
             self.debug_image(
                 self.cell_signal_image_fp,
                 f'Cell Signal Index: {self.frame_index}',
@@ -245,7 +248,7 @@ class FrameResult:
         plt.savefig(fp)
         self.cell_count_image_fp = fp
         plt.clf()
-        if SINGLE_THREAD_DEBUG:
+        if do_visualization_debug():
             self.debug_image(
                 self.cell_count_image_fp,
                 f'Cell Count Index: {self.frame_index}',
@@ -303,7 +306,7 @@ class FrameResult:
         fp = os.path.join(self.filepath, file_handle)
         base_image.save(fp)
         self.composite_image_fp = fp
-        if SINGLE_THREAD_DEBUG:
+        if do_visualization_debug():
             self.debug_image(
                 self.composite_image_fp,
                 f'Composite Image Index: {self.frame_index}',
@@ -502,6 +505,7 @@ def generate_segmentation_visualization(
     Returns:
 
     """
+    print(f'{threading.active_count()=}')
     out_list = []
     obs_viz = ObservationVisualization(
         observation_index=observation_index,

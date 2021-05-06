@@ -11,7 +11,7 @@ The commands are presented in the order in which they should be run:
 
 ### convert-nd2-to-tiffs
 <p align="center">
-  <img width="460" height="300" src="https://cidar-screencast-bucket.s3.amazonaws.com/beholder-conversion.gif">
+  <img src="https://cidar-screencast-bucket.s3.amazonaws.com/beholder-conversion.gif">
 </p>
 
 ```
