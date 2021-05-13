@@ -2,7 +2,7 @@ import multiprocessing as mp
 from dataclasses import dataclass
 from typing import (
     Dict,
-
+    List,
 )
 
 from rich.console import Console
@@ -27,7 +27,12 @@ class ConfigOptions(metaclass=SingletonBaseClass):
                 'm-Cherry': 'red',
                 'DAPI1': 'green',
                 'YFP': 'yellow',
+                'GFP': 'green',
             }
+
+
+def get_color_keys() -> List[str]:
+    return list(ConfigOptions().color_lut.keys())
 
 
 def do_render_videos() -> bool:
@@ -52,6 +57,7 @@ def convert_channel_name_to_color(channel_name: str) -> str:
 
 def do_test_write() -> bool:
     return ConfigOptions().test_write
+
 
 def beholder_text(input_text: str, color: str = '#49306B'):
     """
