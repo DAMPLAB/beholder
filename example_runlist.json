@@ -1,0 +1,24 @@
+{
+  "input_datasets": [
+    "1-SR_1_5_6hPre-C_2h_1mMIPTG_OFF_1hmMIPTG_ON_22hM9_TS_MC1",
+    "1-SR_1_9_6hPre-C_1haTc_TS_MC2",
+    "1-SR_2_6_6hPre-C_1hNoIPTG_16hIPTG_M9_TS_MC1",
+    "1-SR_3_7_12hPreCulture_2h_IPTG_OFF_12hIPTG_ON_M9_TS_MC1",
+    "1-SR_4_15_6hPre-C_1haTc_TS_MC1",
+    "2-SR_3_13_6hIPTGOFF_16hIPTGOFF_M9_TS_MC1",
+    "2-SR_4_8_12hIPTG_ON_M9_TS_MC1001",
+    "2-SR_4_15_1hmMIPTGON_15hM9_TS_MC1"
+  ],
+  "num_observations": [
+    15,
+    17,
+    17,
+    30,
+    18,
+    21,
+    17,
+    18
+  ],
+  "stages": [],
+  "settings": []
+}

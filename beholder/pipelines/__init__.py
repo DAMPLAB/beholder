@@ -15,4 +15,5 @@ from .frame_stabilization import (
 )
 from .nd2_conversion import (
     enqueue_nd2_conversion,
+    enqueue_brute_force_conversion,
 )
