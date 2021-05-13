@@ -38,7 +38,7 @@ from beholder.signal_processing import (
     fluorescence_filtration,
 )
 from beholder.signal_processing.sigpro_utility import (
-    get_channel_data_from_xml_metadata,
+    get_channel_and_wl_data_from_xml_metadata,
     ingress_tiff_file,
 )
 from beholder.utils.config import (
@@ -243,7 +243,7 @@ def enqueue_segmentation(input_fp: str):
     # This assumes that everyone has the same amount of channels.
     # If we get to the point where ND2 files have different channels WITHIN
     # themselves I'm throwing my computer into the Charles...
-    channels = get_channel_data_from_xml_metadata(tree)
+    channels = get_channel_and_wl_data_from_xml_metadata(tree)
     packaged_tiffs = []
     tiff_path = os.path.join(input_fp, 'raw_tiffs')
     tiff_fp = glob.glob(tiff_path + '**/*.tiff')
