@@ -457,31 +457,52 @@ def s3_sync_download(
             sys.stdout.flush()
 
 
-# ------------------------------ God Command ------------------------------
+# ------------------------------ God Command -----------------------------------
 @app.command()
 def beholder(
+        runlist: str,
         nd2_directory: str = '/mnt/core2/microscopy_images/sam_2021',
-        input_directory: str = '/mnt/core2/beholder_output',
+        output_directory: str = '/mnt/core2/beholder_output',
         filter_criteria=None,
-        runlist: str = None,
 ):
     # We just the pipeline in it's entirety, piping the arguments throughout
     # the entirety of the program.
-    # You can imagine us unpacking the run list right here.
-    convert_nd2_to_tiffs(
-        input_directory=nd2_directory,
-        output_directory=input_directory,
-        filter_criteria=filter_criteria,
-        runlist=runlist,
-    )
-    segmentation(
-        input_directory=input_directory,
-        runlist=runlist,
-    )
-    s3_sync_upload(
-        input_directory=input_directory,
-        runlist=runlist,
-    )
+    if not os.path.isfile(runlist):
+        raise RuntimeError(f'Cannot find runlist at {runlist}')
+    # Extract our stages.
+    with open(runlist, 'r') as input_file:
+        runlist_json = json.load(input_file)
+        stages = runlist_json['stages']
+    for stage in stages:
+        print(f'Starting Stage: {stage}...')
+        if stage == "convert_nd2_to_gif":
+            convert_nd2_to_tiffs(
+                input_directory=nd2_directory,
+                output_directory=output_directory,
+                filter_criteria=filter_criteria,
+                runlist=runlist,
+            )
+        if stage == "convert_corrupted_nd2_to_tiffs":
+            convert_corrupted_nd2_to_tiffs(
+                input_directory=nd2_directory,
+                output_directory=output_directory,
+                runlist=runlist,
+            )
+        if stage == "segmentation":
+            segmentation(
+                input_directory=output_directory,
+                runlist=runlist,
+            )
+        if stage == "s3_sync_upload":
+            s3_sync_upload(
+                input_directory=output_directory,
+                runlist=runlist,
+            )
+        if stage == "s3_sync_download":
+            s3_sync_download(
+                output_directory=output_directory,
+            )
+        print(f'Finishing Stage: {stage}...')
 
 
 if __name__ == "__main__":

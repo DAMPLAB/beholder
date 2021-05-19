@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 from pathlib import Path
@@ -341,6 +342,10 @@ def enqueue_brute_force_conversion(
         image_reader = bf.ImageReader(input_fp, perform_init=True)
         names, sizes, resolutions = parse_xml_metadata(metadata)
         tiff_directory = os.path.join(out_dir, 'raw_tiffs')
+        if os.path.exists(tiff_directory):
+            files = glob.glob(os.path.join(tiff_directory, '*.tiff'))
+            for f in files:
+                os.remove(f)
         if not os.path.exists(tiff_directory):
             os.mkdir(tiff_directory)
         # We assume uniform shape + size for all of our input frames.
@@ -368,8 +373,11 @@ def enqueue_brute_force_conversion(
                                    frame_stride:frame_stride+observation_length
                                    ]
             clean_out = list(filter(filter_nonfluorescent_channel, observation_grouping))
-            save_path = os.path.join(tiff_directory, f'{i}.tiff')
-            tiffile.imsave(save_path, clean_out)
+            if clean_out:
+                clean_out = np.stack(clean_out, axis=0)
+                save_path = os.path.join(tiff_directory, f'{i}.tiff')
+                clean_out = clean_out.transpose(3, 0, 1, 2)
+                tiffile.imsave(save_path, clean_out)
         metadata_save_path = os.path.join(out_dir, f'metadata.xml')
         with open(metadata_save_path, 'w') as out_file:
             corrected_metadata = metadata_correction(metadata)
