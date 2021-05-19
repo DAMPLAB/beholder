@@ -68,6 +68,7 @@ class FrameResult:
             'm-Cherry': 'red',
             'DAPI1': 'green',
             'YFP': 'yellow',
+            'GFP': 'green',
         }
         # This is a bit of a hack to get around some weirdness with multiplots
         # and reducing resolution for some of our combined images as well as
