@@ -7,6 +7,7 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+import csv
 import os
 from dataclasses import dataclass
 from typing import List
@@ -17,7 +18,9 @@ import pandas as pd
 
 from beholder.signal_processing.signal_transform import (
     debug_image,
-    downsample_image,
+)
+from beholder.ds import (
+    TiffPackage,
 )
 
 
@@ -43,6 +46,10 @@ class CellStats:
     median_signal: float
     std_dev: float
     filtered_len: int
+
+def calculate_raw_fluorescence(input_frame: np.ndarray) -> int:
+    return np.sum(input_frame)
+
 
 
 def fluorescence_detection(
@@ -206,33 +213,35 @@ def write_raw_frames(
 
 
 def write_stat_record(
-        total_statistics,
-        record_name: str,
+        input_package: TiffPackage,
+        record_fp: str,
 ):
-    channel_one_stats = []
-    channel_two_stats = []
-    for index, stat_pair in enumerate(total_statistics):
-        c1_stat, c2_stat = stat_pair
-        channel_one_stats.append(c1_stat)
-        channel_two_stats.append(c2_stat)
+    num_channels = input_package.img_array.shape[0]
+    num_observations = input_package.img_array.shape[1]
+    fl_channels = num_channels - 1
     dt = {
-        'index': list(range(len(total_statistics))),
-        'ch_1_fluorescence': [stat[0] for stat in channel_one_stats],
-        'ch_1_std_dev': [stat[1] for stat in channel_one_stats],
-        'ch_1_cell_count': [stat[2] for stat in channel_one_stats],
-        'ch_2_fluorescence': [stat[0] for stat in channel_two_stats],
-        'ch_2_std_dev': [stat[1] for stat in channel_two_stats],
-        'ch_2_cell_count': [stat[2] for stat in channel_two_stats],
+        'index': list(range(num_observations))
     }
-    # TODO: Sloppy, time crunch.
-    df = pd.DataFrame.from_dict(dt)
-    df.to_csv(record_name)
-    # try:
-    #     with open(record_name, 'w') as csvfile:
-    #         writer = csv.DictWriter(csvfile, fieldnames=list(dt.keys()))
-    #         writer.writeheader()
-    #         for data in dt:
-    #             writer.writerow(data)
-    # except IOError as e:
-    #     print(f'I/O Error: {e}')
-    #
+    for channel in range(fl_channels):
+        # First result is PhLc
+        channel_offset = channel + 1
+        channel_name = input_package.channel_names[channel_offset]
+        channel_fluorescence = []
+        channel_std_dev = []
+        channel_cell_count = []
+        for i in range(num_observations):
+            target_frame = input_package.img_array[channel_offset][i]
+            # Calculate total fluorescence of the frame
+            channel_fluorescence.append(np.sum(target_frame))
+            channel_std_dev.append(np.std(target_frame))
+            channel_cell_count.append(
+                len(input_package.cell_signal_auxiliary_frames[channel][i])
+            )
+        dt[f'{channel_name}_fluorescence'] = channel_fluorescence
+        dt[f'{channel_name}_std_dev'] = channel_std_dev
+        dt[f'{channel_name}_cell_count'] = channel_cell_count
+        df = pd.DataFrame.from_dict(dt)
+        df.to_csv(record_fp)
+
+
+

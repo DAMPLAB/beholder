@@ -33,8 +33,8 @@ from beholder.signal_processing.sigpro_utility import (
     get_channel_data_from_xml_metadata,
 )
 from beholder.utils import (
+    BLogger,
     ConfigOptions,
-    beholder_text,
     get_color_keys,
 )
 
@@ -44,6 +44,7 @@ warnings.filterwarnings("ignore")
 
 console = Console()
 app = typer.Typer()
+log = BLogger()
 
 
 # ----------------------- Command Line Utility Functions -----------------------
@@ -173,8 +174,8 @@ def dataset_selection(
         input_directories = list((filter(filter_fn, input_directories)))
     display_directories = [Path(i).stem for i in input_directories]
     display_directories.insert(0, 'all')
-    beholder_text('⬤ Please select input directories.')
-    beholder_text(
+    log.info('⬤ Please select input directories.')
+    log.info(
         '-' * 88
     )
     terminal_menu = TerminalMenu(
@@ -184,7 +185,7 @@ def dataset_selection(
     )
     menu_entry_indices = terminal_menu.show()
     if terminal_menu.chosen_menu_entries is None:
-        beholder_text('Exit Recognized. Have a nice day!')
+        log.info('Exit Recognized. Have a nice day!')
         exit(0)
     if 'all' in terminal_menu.chosen_menu_entries:
         segmentation_list = input_directories
@@ -235,11 +236,11 @@ def segmentation(
     # have a home...
     for index, input_directory in enumerate(segmentation_list):
         if logging:
-            beholder_text(
+            log.info(
                 f'⬤ Starting Segmentation Pipeline for '
                 f'{Path(input_directory).stem}... ({index}/{len(segmentation_list)})'
             )
-            beholder_text(
+            log.info(
                 '-' * 88
             )
         enqueue_segmentation(input_directory)
@@ -272,15 +273,10 @@ def runlist_validation_and_parsing(
         removal_list = []
         for i in input_directories:
             if not os.path.isfile(i) and not os.path.isdir(i):
-                beholder_text(f'Unable to locate {i}, skipping...')
+                log.debug(f'Unable to locate {i}, skipping...')
                 removal_list.append(i)
         for bad_dir in removal_list:
             input_directories.remove(bad_dir)
-        # files_and_sizes = ((
-        #     path,
-        #     sum([file.stat().st_size for file in Path(path).rglob('*')])) for path in input_directories)
-        # sorted_files_with_size = sorted(files_and_sizes, key=operator.itemgetter(1))
-        # input_directories = [file_path for file_path, _ in sorted_files_with_size]
         return input_directories
 
 
@@ -307,11 +303,11 @@ def calculate_frame_drift(
     # have a home...
     for index, input_directory in enumerate(stabilization_list):
         if logging:
-            beholder_text(
+            log.info(
                 f'⬤ Starting Frame-Shift Calculation Pipeline for '
                 f'{Path(input_directory).stem}... ({index}/{len(stabilization_list)})'
             )
-            beholder_text(
+            log.info(
                 '-' * 88
             )
         enqueue_frame_stabilization(input_directory)
@@ -354,7 +350,9 @@ def convert_nd2_to_tiffs(
             runlist_fp=runlist,
             files=True,
         )
+    log.debug(f'Conversion list: {conversion_list}')
     enqueue_nd2_conversion(conversion_list, output_directory)
+
 
 @app.command()
 def convert_corrupted_nd2_to_tiffs(
@@ -378,6 +376,7 @@ def convert_corrupted_nd2_to_tiffs(
         runlist_fp=runlist,
         files=True,
     )
+    log.debug(f'Conversion list: {conversion_list}')
     enqueue_brute_force_conversion(
         conversion_list=conversion_list,
         output_directory=output_directory,
@@ -415,8 +414,8 @@ def s3_sync_upload(
             runlist_fp=runlist,
             files=False,
         )
-    beholder_text(f'⬤ Syncing {input_directory} to AWS S3 Bucket {output_bucket}.')
-    beholder_text('-' * 88)
+    log.info(f'⬤ Syncing {input_directory} to AWS S3 Bucket {output_bucket}.')
+    log.info('-' * 88)
     for upload_dir in upload_list:
         upload_suffix = Path(upload_dir).stem
         cmd = ['aws', 's3', 'sync', '--size-only', f'{upload_dir}', f's3://{output_bucket}/{upload_suffix}']
@@ -445,8 +444,8 @@ def s3_sync_download(
     Returns:
 
     """
-    beholder_text(f'⬤ Downloading AWS S3 Bucket {input_bucket} to local directory {output_directory}...')
-    beholder_text('-' * 88)
+    log.info(f'⬤ Downloading AWS S3 Bucket {input_bucket} to local directory {output_directory}...')
+    log.info('-' * 88)
     cmd = ['aws', 's3', 'sync', f's3://{input_bucket}', f'{output_directory}', '--exclude', '*.tiff']
     if results_only:
         cmd.append('--exclude')
@@ -467,6 +466,7 @@ def beholder(
 ):
     # We just the pipeline in it's entirety, piping the arguments throughout
     # the entirety of the program.
+    log.info('Beholder START.')
     if not os.path.isfile(runlist):
         raise RuntimeError(f'Cannot find runlist at {runlist}')
     # Extract our stages.
@@ -474,7 +474,7 @@ def beholder(
         runlist_json = json.load(input_file)
         stages = runlist_json['stages']
     for stage in stages:
-        print(f'Starting Stage: {stage}...')
+        log.info(f'Starting Stage: {stage}...')
         if stage == "convert_nd2_to_gif":
             convert_nd2_to_tiffs(
                 input_directory=nd2_directory,
@@ -502,7 +502,7 @@ def beholder(
             s3_sync_download(
                 output_directory=output_directory,
             )
-        print(f'Finishing Stage: {stage}...')
+        log.info(f'Finishing Stage: {stage}...')
 
 
 if __name__ == "__main__":
