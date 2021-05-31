@@ -48,6 +48,9 @@ from beholder.utils.config import (
     do_single_threaded,
     convert_channel_name_to_color,
 )
+from beholder.signal_processing.stats import (
+    write_stat_record
+)
 
 import threading
 # ----------------------- Command Line Utility Functions -----------------------
@@ -122,7 +125,6 @@ def contour_filtration(contours):
 
 def generate_frame_visualization(input_arguments: Tuple[int, TiffPackage, str]):
     index, result, filepath = input_arguments
-    print(2.5)
     return generate_segmentation_visualization(
         filename=filepath,
         observation_index=index,
@@ -294,10 +296,18 @@ def enqueue_segmentation(input_fp: str):
     # ------------------- EXIT GRACEFULLY IF SEGMENTATION FAILED  --------------
     if not segmentation_results:
         return
+    # --------------------- PURGE UNWANTED 'DE-FOCUSED' IMAGES  ----------------
+
+
     # ---------------- ENSURE OUTPUT DIRECTORY EXISTS AND WRITE OUT  -----------
+    # Write out summary statistics
+    summation_csv_output = os.path.join(output_location, 'summary_statistics.csv')
+    # Write out more involved channel by channel statistics.
     for i, result in enumerate(tqdm.tqdm(segmentation_results)):
+        frame_output = os.path.join(output_location, f'{i + 1}')
+        summation_csv_output = os.path.join(frame_output, f'{i + 1}_summary_statistics.csv')
+        write_stat_record(input_package=result, record_fp=summation_csv_output)
         for j, channel_result in enumerate(result.cell_signal_auxiliary_frames):
-            frame_output = os.path.join(output_location, f'{i + 1}')
             channel_name = result.channel_names[j + 1]
             csv_location = os.path.join(frame_output, f'{i + 1}_{channel_name}.csv')
             if not os.path.exists(frame_output):
@@ -307,10 +317,8 @@ def enqueue_segmentation(input_fp: str):
                 for frame_result in channel_result:
                     writer.writerow([k.sum_signal for k in frame_result])
     if do_render_videos():
-        print(1)
         arg_tuple = range(len(segmentation_results)), segmentation_results, output_location
         if do_single_threaded():
-            print(2)
             print(threading.active_count())
             for index, segmentation_result in tqdm.tqdm(
                     enumerate(segmentation_results),

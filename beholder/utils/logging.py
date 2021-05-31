@@ -1,7 +1,9 @@
 '''
 Author: W.R. Jackson, Damp Lab 2020
 '''
+import datetime
 import logging
+import sys
 
 import colorama
 
@@ -27,12 +29,14 @@ class BLogger(metaclass=SingletonBaseClass):
     '''
 
     def __init__(self):
-        # TODO: Persist to disk via rotating log file handler in
-        #  directory outside of repository.
+
         logging.basicConfig(
-            format='%(asctime)s %(message)s',
+            filename=f'beholder_{datetime.datetime.now().isoformat()}.log',
+            format='[%(asctime)s] [%(levelname)s] %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S',
+            level=logging.DEBUG,
         )
+        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.INFO)
         # This only performs any kind of action on a windows machine,
@@ -70,7 +74,7 @@ class BLogger(metaclass=SingletonBaseClass):
         Returns:
         '''
         self.log.debug(
-            f'{colorama.Fore.WHITE}{message}{colorama.Style.RESET_ALL}'
+            f'{message}'
         )
 
     def info(self, message: str):
@@ -81,7 +85,7 @@ class BLogger(metaclass=SingletonBaseClass):
         Returns:
         '''
         self.log.info(
-            f'{colorama.Fore.BLUE}{message}{colorama.Style.RESET_ALL}'
+            f'{message}'
         )
 
     def warning(self, message: str):
@@ -92,7 +96,7 @@ class BLogger(metaclass=SingletonBaseClass):
         Returns:
         '''
         self.log.warning(
-            f'{colorama.Fore.YELLOW}{message}{colorama.Style.RESET_ALL}'
+            f'{message}'
         )
 
     def error(self, message: str):
@@ -103,7 +107,7 @@ class BLogger(metaclass=SingletonBaseClass):
         Returns:
         '''
         self.log.error(
-            f'{colorama.Fore.RED}{message}{colorama.Style.RESET_ALL}'
+            f'{message}'
         )
 
     def critical(self, message: str):
@@ -115,7 +119,7 @@ class BLogger(metaclass=SingletonBaseClass):
         '''
         # Magenta is the most ominous color.
         self.log.critical(
-            f'{colorama.Back.RED}{message}{colorama.Style.RESET_ALL}'
+            f'{message}'
         )
 
     def damp_themed(self, message: str):
@@ -126,5 +130,5 @@ class BLogger(metaclass=SingletonBaseClass):
         Returns:
         '''
         self.log.info(
-            f'{colorama.Fore.MAGENTA}{message}{colorama.Style.RESET_ALL}'
+            f'{message}'
         )
