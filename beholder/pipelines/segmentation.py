@@ -49,7 +49,8 @@ from beholder.utils.config import (
     convert_channel_name_to_color,
 )
 from beholder.signal_processing.stats import (
-    write_stat_record
+    write_stat_record,
+    end_of_observation_defocus_clean,
 )
 
 import threading
@@ -297,7 +298,7 @@ def enqueue_segmentation(input_fp: str):
     if not segmentation_results:
         return
     # --------------------- PURGE UNWANTED 'DE-FOCUSED' IMAGES  ----------------
-
+    segmentation_results = end_of_observation_defocus_clean(segmentation_results)
 
     # ---------------- ENSURE OUTPUT DIRECTORY EXISTS AND WRITE OUT  -----------
     # Write out summary statistics

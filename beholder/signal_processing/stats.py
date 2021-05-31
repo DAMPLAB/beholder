@@ -47,9 +47,37 @@ class CellStats:
     std_dev: float
     filtered_len: int
 
-def calculate_raw_fluorescence(input_frame: np.ndarray) -> int:
-    return np.sum(input_frame)
 
+def end_of_observation_defocus_clean(
+        segmentation_results: List[TiffPackage],
+        deviation_num: int = 2,
+):
+    ret_list = []
+    for result in segmentation_results:
+        raw_stats: List[CellStats] = result.frame_stats[0]
+        raw_cell_count = [len(x[i].raw_signal) for i, x in enumerate(raw_stats)]
+        cell_count_std = np.std(raw_cell_count)
+        reverse_index = None
+        for index, cell_count in reversed(list(enumerate(raw_cell_count))):
+            if cell_count < (np.median(raw_cell_count) - cell_count_std * deviation_num):
+                reverse_index = index
+                break
+        # Then we have to slice everyone if it exists.
+        if reverse_index is not None:
+            for i in range(len(result.auxiliary_frame_contours)):
+                result.auxiliary_frame_contours[i] = result.auxiliary_frame_contours[i][:reverse_index]
+            for i in range(len(result.cell_signal_auxiliary_frames)):
+                result.cell_signal_auxiliary_frames[i] = result.cell_signal_auxiliary_frames[i][:reverse_index]
+            result.final_frames = result.final_frames[:reverse_index]
+            for i in range(len(result.frame_stats)):
+                result.frame_stats[i] = result.frame_stats[i][:reverse_index]
+            result.img_array = result.img_array[:, :reverse_index, :, :]
+            for i in range(len(result.labeled_auxiliary_frames)):
+                result.labeled_auxiliary_frames[i] = result.labeled_auxiliary_frames[i][:reverse_index]
+            result.mask_frames = result.mask_frames[:reverse_index]
+            result.primary_frame_contours = result.primary_frame_contours[:reverse_index]
+        ret_list.append(result)
+    return ret_list
 
 
 def fluorescence_detection(
@@ -242,6 +270,3 @@ def write_stat_record(
         dt[f'{channel_name}_cell_count'] = channel_cell_count
         df = pd.DataFrame.from_dict(dt)
         df.to_csv(record_fp)
-
-
-
