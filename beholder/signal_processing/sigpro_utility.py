@@ -56,6 +56,21 @@ def get_channel_data_from_xml_metadata(xml_tree: ETree.ElementTree):
                         channel_st.add(name)
     return list(channel_st)
 
+def get_time_stamps_from_xml_metadata(xml_tree: ETree.ElementTree):
+    metadata_root = xml_tree.getroot()
+    master_list = []
+    for child in metadata_root:
+        if child.tag.endswith('Image'):
+            for grandchild in child:
+                if grandchild.tag.endswith('Pixels'):
+                    inner_list = []
+                    for ggchild in grandchild:
+                        if ggchild.tag.endswith('Plane'):
+                            if 'DeltaT' in ggchild.attrib:
+                                inner_list.append(float(ggchild.attrib['DeltaT']))
+                    master_list.append(sorted(set(inner_list)))
+    return master_list
+
 def get_channel_name_from_wavelength(wavelength_nm: float):
     wavelength_conversion_lut = {
         645.5: 'm-Cherry',
