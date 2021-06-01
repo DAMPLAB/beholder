@@ -39,6 +39,7 @@ from beholder.signal_processing import (
 )
 from beholder.signal_processing.sigpro_utility import (
     get_channel_and_wl_data_from_xml_metadata,
+    get_time_stamps_from_xml_metadata,
     ingress_tiff_file,
 )
 from beholder.utils.config import (
@@ -247,6 +248,7 @@ def enqueue_segmentation(input_fp: str):
     # If we get to the point where ND2 files have different channels WITHIN
     # themselves I'm throwing my computer into the Charles...
     channels = get_channel_and_wl_data_from_xml_metadata(tree)
+    timestamps = get_time_stamps_from_xml_metadata(tree)
     packaged_tiffs = []
     tiff_path = os.path.join(input_fp, 'raw_tiffs')
     tiff_fp = glob.glob(tiff_path + '**/*.tiff')
@@ -262,6 +264,7 @@ def enqueue_segmentation(input_fp: str):
             continue
         wavelengths = [x[0] for x in channels[index]]
         channel_names = [x[1] for x in channels[index]]
+        ts = [x for x in timestamps[index]]
         title = Path(tiff_file).stem
         inner_pack = TiffPackage(
             img_array=array,
@@ -269,6 +272,7 @@ def enqueue_segmentation(input_fp: str):
             channel_names=channel_names,
             channel_wavelengths=wavelengths,
             tiff_index=index,
+            timestamps=ts,
         )
         packaged_tiffs.append(inner_pack)
     # ---------------------------- PERFORM SEGMENTATION  -----------------------
