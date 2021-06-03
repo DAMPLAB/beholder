@@ -115,6 +115,19 @@ def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
             os.mkdir(tiff_directory)
         # We assume uniform shape + size for all of our input frames.
         num_of_frames, x_dim, y_dim, channels = sizes[0]
+        frame_writes = np.zeros(len(names) + num_of_frames)
+        for i in tqdm.tqdm(
+                range(len(names)),
+                desc=f"Detecting blank frames for {Path(input_fp).stem}..."):
+            for j in range(num_of_frames):
+                position = i * len(names) + j
+                blank_check = image_reader.read(c=1, t=j, series=i)
+                if np.sum(blank_check) == 0:
+                    frame_writes[position] = 0
+                    continue
+                else:
+                    frame_writes[position] = 1
+        # WRITE STEP
         for i in tqdm.tqdm(
                 range(len(names)),
                 desc=f"Converting {Path(input_fp).stem}..."):
@@ -138,9 +151,11 @@ def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
             save_path = os.path.join(tiff_directory, f'{i}.tiff')
             tiffile.imsave(save_path, out_array)
         metadata_save_path = os.path.join(out_dir, f'metadata.xml')
-        # write_xml_metadata(metadata.decode(encoding='utf-8'), metadata_save_path)
+        write_save_path = os.path.join(out_dir, f'write_array.npy')
         with open(metadata_save_path, 'w') as out_file:
             out_file.write(metadata)
+        with open(write_save_path, 'w') as out_file:
+            np.save(frame_writes, out_file)
     # print(f'{blank_offset=}')
     javabridge.kill_vm()
 
