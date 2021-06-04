@@ -7,15 +7,20 @@ from typing import (
 )
 from xml.etree import ElementTree as ETree
 
+import nd2reader
 import numpy as np
+import pims_nd2
 import tiffile
 import tqdm
 
 from beholder.signal_processing.sigpro_utility import (
     get_channel_and_wl_data_from_xml_metadata,
 )
-import nd2reader
-import pims_nd2
+from beholder.utils import (
+    BLogger,
+)
+
+log = BLogger()
 
 
 # --------------------------- UTILITY FUNCTIONALITY ----------------------------
@@ -88,12 +93,13 @@ def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
         channel_listings = get_channel_and_wl_data_from_xml_metadata(
             ETree.ElementTree(ETree.fromstring(metadata))
         )
+        log.info(f'Detected Channels for {Path(input_fp).stem}: {channel_listings}')
         corruption_flag = False
         for channel_listing in channel_listings:
             for channel_entry in channel_listing:
                 wavelength, channel_name = channel_entry
                 if channel_name == 'DAPI1':
-                    print(
+                    log.warning(
                         f'Detected bad channel settings for {input_fp}, '
                         f'falling back to brute-force conversion method... '
                     )
@@ -108,55 +114,73 @@ def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
                 prior_metadata=metadata,
             )
             continue
-        image_reader = bf.ImageReader(input_fp, perform_init=True)
         names, sizes, resolutions = parse_xml_metadata(metadata)
+        log.debug(f'------------------')
+        log.debug(f'Detected Names: {names}')
+        log.debug(f'Detected Sizes: {sizes}')
+        log.debug(f'Detected Resolutions: {sizes}')
+        log.debug(f'------------------')
         tiff_directory = os.path.join(out_dir, 'raw_tiffs')
         if not os.path.exists(tiff_directory):
             os.mkdir(tiff_directory)
         # We assume uniform shape + size for all of our input frames.
         num_of_frames, x_dim, y_dim, channels = sizes[0]
-        frame_writes = np.zeros(len(names) + num_of_frames)
+        log.debug(f'------------------')
+        log.debug(f'Detected Number of Frames: {num_of_frames}')
+        log.debug(f'Detected X Dimension: {x_dim}')
+        log.debug(f'Detected Y Dimension: {y_dim}')
+        log.debug(f'Detected Channels: {channels}')
+        log.debug(f'------------------')
+        frame_writes = np.zeros(len(sizes) * num_of_frames)
+        # ----------------------------------------- START BLANK FRAME DETECTION ----------------------------------------
         for i in tqdm.tqdm(
-                range(len(names)),
+                range(len(sizes)),
                 desc=f"Detecting blank frames for {Path(input_fp).stem}..."):
             for j in range(num_of_frames):
-                position = i * len(names) + j
-                blank_check = image_reader.read(c=1, t=j, series=i)
+                position = (i * num_of_frames) + j
+                print(position)
+                with bf.ImageReader(input_fp) as image_reader:
+                    blank_check = image_reader.read(c=1, t=j, series=i)
                 if np.sum(blank_check) == 0:
                     frame_writes[position] = 0
                     continue
                 else:
                     frame_writes[position] = 1
-        # WRITE STEP
+        # ---------------------------------------------- START FRAME WRITES --------------------------------------------
         for i in tqdm.tqdm(
                 range(len(names)),
                 desc=f"Converting {Path(input_fp).stem}..."):
             output_array = []
             for j in range(num_of_frames):
-                blank_check = image_reader.read(c=1, t=j, series=i)
+                with bf.ImageReader(input_fp, perform_init=True) as image_reader:
+                    blank_check = image_reader.read(c=1, t=j, series=i)
                 if np.sum(blank_check) == 0:
                     blank_offset += 1
                     continue
                 else:
                     channel_array = []
                     for k in range(channels):
-                        temp = image_reader.read(c=k, t=j, series=i)
+                        with bf.ImageReader(input_fp, perform_init=True) as image_reader:
+                            temp = image_reader.read(c=k, t=j, series=i)
                         channel_array.append(temp)
                     output_array.append(channel_array)
             out_array = np.asarray(output_array)
             if len(out_array.shape) == 4:
+                log.debug(f'Out Array being transposed from 0, 1, 2, 3 -> 1, 0, 2, 3')
                 out_array = out_array.transpose(1, 0, 2, 3)
             if len(out_array.shape) == 3:
+                log.debug(f'Out Array being transposed from 0, 1, 2 -> 1, 0, 2')
                 out_array = out_array.transpose(1, 0, 2)
             save_path = os.path.join(tiff_directory, f'{i}.tiff')
             tiffile.imsave(save_path, out_array)
         metadata_save_path = os.path.join(out_dir, f'metadata.xml')
         write_save_path = os.path.join(out_dir, f'write_array.npy')
         with open(metadata_save_path, 'w') as out_file:
-            out_file.write(metadata)
+            log.debug(f'Metadata being saved to {metadata_save_path}')
+        out_file.write(metadata)
         with open(write_save_path, 'w') as out_file:
+            log.debug(f'Frame write information being saved to {write_save_path}')
             np.save(frame_writes, out_file)
-    # print(f'{blank_offset=}')
     javabridge.kill_vm()
 
 

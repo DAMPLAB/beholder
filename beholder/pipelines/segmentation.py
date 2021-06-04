@@ -306,7 +306,6 @@ def enqueue_segmentation(input_fp: str):
 
     # ---------------- ENSURE OUTPUT DIRECTORY EXISTS AND WRITE OUT  -----------
     # Write out summary statistics
-    summation_csv_output = os.path.join(output_location, 'summary_statistics.csv')
     # Write out more involved channel by channel statistics.
     for i, result in enumerate(tqdm.tqdm(segmentation_results)):
         frame_output = os.path.join(output_location, f'{i + 1}')

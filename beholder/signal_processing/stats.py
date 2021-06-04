@@ -64,18 +64,16 @@ def end_of_observation_defocus_clean(
                 break
         # Then we have to slice everyone if it exists.
         if reverse_index is not None:
+            offset_reverse = reverse_index-1
             for i in range(len(result.auxiliary_frame_contours)):
-                result.auxiliary_frame_contours[i] = result.auxiliary_frame_contours[i][:reverse_index]
-            for i in range(len(result.cell_signal_auxiliary_frames)):
-                result.cell_signal_auxiliary_frames[i] = result.cell_signal_auxiliary_frames[i][:reverse_index]
-            result.final_frames = result.final_frames[:reverse_index]
-            for i in range(len(result.frame_stats)):
-                result.frame_stats[i] = result.frame_stats[i][:reverse_index]
-            result.img_array = result.img_array[:, :reverse_index, :, :]
-            for i in range(len(result.labeled_auxiliary_frames)):
-                result.labeled_auxiliary_frames[i] = result.labeled_auxiliary_frames[i][:reverse_index]
-            result.mask_frames = result.mask_frames[:reverse_index]
-            result.primary_frame_contours = result.primary_frame_contours[:reverse_index]
+                result.auxiliary_frame_contours[i] = result.auxiliary_frame_contours[i][:offset_reverse]
+                result.labeled_auxiliary_frames[i] = result.labeled_auxiliary_frames[i][:offset_reverse]
+                result.cell_signal_auxiliary_frames[i] = result.cell_signal_auxiliary_frames[i][:offset_reverse]
+                result.frame_stats[i] = result.frame_stats[i][:offset_reverse]
+            result.final_frames = result.final_frames[:offset_reverse]
+            result.img_array = result.img_array[:, :offset_reverse, :, :]
+            result.mask_frames = result.mask_frames[:offset_reverse]
+            result.primary_frame_contours = result.primary_frame_contours[:offset_reverse]
         ret_list.append(result)
     return ret_list
 
