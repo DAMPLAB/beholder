@@ -48,7 +48,7 @@ app = typer.Typer()
 log = BLogger()
 
 # Jackson is lazy variables
-ND2_LOC = '/mnt/core2/3-Microscope_Images/Batch1'
+ND2_LOC = '/mnt/core1/3-Microscope_Images/Batch1'
 OUT_LOC = '/mnt/core1/beholder_output'
 
 # ----------------------- Command Line Utility Functions -----------------------
