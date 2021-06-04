@@ -5,7 +5,7 @@ description = ""
 authors = ["W.R. Jackson"]
 
 [tool.poetry.dependencies]
-python = "3.8"
+python = "3.8.2"
 imageio = "^2.9.0"
 tqdm = "^4.50.2"
 pims = "^0.5"

@@ -27,6 +27,7 @@ from beholder.pipelines import (
     enqueue_frame_stabilization,
     enqueue_brute_force_conversion,
     enqueue_nd2_conversion,
+    enqueue_panel_detection,
 )
 from beholder.signal_processing.sigpro_utility import (
     get_channel_and_wl_data_from_xml_metadata,
@@ -46,6 +47,9 @@ console = Console()
 app = typer.Typer()
 log = BLogger()
 
+# Jackson is lazy variables
+ND2_LOC = '/mnt/core1/3-Microscope_Images/Batch1'
+OUT_LOC = '/mnt/core1/beholder_output'
 
 # ----------------------- Command Line Utility Functions -----------------------
 
@@ -207,6 +211,7 @@ def segmentation(
         logging: bool = True,
         filter_criteria=None,
         runlist: str = None,
+        panel_selection: List[int] = None,
 ):
     """
 
@@ -216,6 +221,7 @@ def segmentation(
         logging:
         filter_criteria:
         runlist:
+        panel_selection:
 
     Returns:
 
@@ -234,6 +240,13 @@ def segmentation(
         )
     # We have our selected input files and now we have to make sure that they
     # have a home...
+    if panel_selection is not None:
+        temp_list = []
+        # We assume that the selection is a list of integer values that correspond to the index of the desired panel.
+        # e.g, if just the first panel is desired we should pass in [0], or if 2 and 7 are desired it should [2, 7]
+        for selection in panel_selection:
+            temp_list.append(segmentation_list[selection])
+        segmentation_list = temp_list
     for index, input_directory in enumerate(segmentation_list):
         if logging:
             log.info(
@@ -273,7 +286,7 @@ def runlist_validation_and_parsing(
         removal_list = []
         for i in input_directories:
             if not os.path.isfile(i) and not os.path.isdir(i):
-                log.debug(f'Unable to locate {i}, skipping...')
+                log.info(f'Unable to locate {i}, skipping...')
                 removal_list.append(i)
         for bad_dir in removal_list:
             input_directories.remove(bad_dir)
@@ -281,6 +294,42 @@ def runlist_validation_and_parsing(
 
 
 # -------------------------- Date Generation Commands --------------------------
+@app.command()
+def check_panel_detection(
+        input_directory: str = ND2_LOC,
+        filter_criteria=None,
+        runlist: str = None,
+):
+    """
+
+    Args:
+        input_directory:
+        filter_criteria:
+        runlist:
+
+    Returns:
+
+    """
+    if type(filter_criteria) == str and filter_criteria in get_color_keys():
+        raise RuntimeError(
+            'Cannot do channel filtration on dataset prior to generation of a '
+            'metadata file.'
+        )
+    if runlist is None:
+        conversion_list = dataset_selection(
+            input_directory=input_directory,
+            filter_criteria=filter_criteria,
+            sort_criteria='alpha',
+        )
+    else:
+        conversion_list = runlist_validation_and_parsing(
+            input_directory=input_directory,
+            runlist_fp=runlist,
+            files=True,
+        )
+    log.debug(f'Conversion list: {conversion_list}')
+    log.change_logging_level('debug')
+    enqueue_panel_detection(conversion_list)
 
 
 @app.command()
@@ -317,8 +366,8 @@ def calculate_frame_drift(
 # ------------------------------ Utility Commands ------------------------------
 @app.command()
 def convert_nd2_to_tiffs(
-        input_directory: str = '/mnt/core2/microscopy_images/sam_2021',
-        output_directory: str = '/mnt/core2/beholder_output',
+        input_directory: str = ND2_LOC,
+        output_directory: str = OUT_LOC,
         filter_criteria=None,
         runlist: str = None,
 ):
@@ -357,7 +406,7 @@ def convert_nd2_to_tiffs(
 @app.command()
 def convert_corrupted_nd2_to_tiffs(
         input_directory: str = '/mnt/core2/microscopy_images/sam_2021',
-        output_directory: str = '/mnt/core2/beholder_output',
+        output_directory: str = '/mnt/core1/beholder_output',
         runlist: str = None,
 ):
     """
@@ -460,8 +509,8 @@ def s3_sync_download(
 @app.command()
 def beholder(
         runlist: str,
-        nd2_directory: str = '/mnt/core2/microscopy_images/sam_2021',
-        output_directory: str = '/mnt/core2/beholder_output',
+        nd2_directory: str = '/mnt/core1/3-Microscope_Images/Batch2',
+        output_directory: str = '/mnt/core1/beholder_output',
         filter_criteria=None,
 ):
     # We just the pipeline in it's entirety, piping the arguments throughout
