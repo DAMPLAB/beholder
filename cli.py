@@ -29,7 +29,9 @@ from beholder.pipelines import (
     enqueue_nd2_conversion,
     enqueue_panel_detection,
     enqueue_rpu_calculation,
+    enqueue_lf_analysis,
 )
+
 from beholder.signal_processing.sigpro_utility import (
     get_channel_and_wl_data_from_xml_metadata,
     get_channel_data_from_xml_metadata,
@@ -334,6 +336,7 @@ def check_panel_detection(
     log.change_logging_level('debug')
     enqueue_panel_detection(conversion_list)
 
+
 @app.command()
 def calculate_rpu_calibration_value(
         input_directory: str = OUT_LOC,
@@ -360,7 +363,6 @@ def calculate_rpu_calibration_value(
     log.change_logging_level('debug')
     log.debug(f'Selection for RPU Calculation: {dataset_fp}')
     enqueue_rpu_calculation(dataset_fp)
-
 
 
 @app.command()
@@ -392,6 +394,39 @@ def calculate_frame_drift(
             )
         enqueue_frame_stabilization(input_directory)
     typer.Exit()
+
+
+@app.command()
+def perform_lf_analysis(
+        runlist: str,
+        calibration_rpu_dataset: str,
+        input_directory: str = OUT_LOC,
+):
+    """
+
+    Args:
+        runlist:
+        calibration_rpu_dataset:
+        input_directory:
+
+    Returns:
+
+    """
+    bound_datasets = runlist_validation_and_parsing(
+        input_directory=input_directory,
+        runlist_fp=runlist,
+        files=False,
+    )
+    calibration_rpu_dataset_fp = os.path.join(
+        OUT_LOC,
+        calibration_rpu_dataset,
+        'rpu_correlation_value.csv',
+    )
+    enqueue_lf_analysis(
+        input_datasets=bound_datasets,
+        calibration_rpu_dataset_fp=calibration_rpu_dataset_fp,
+    )
+
 
 
 # ------------------------------ Utility Commands ------------------------------
