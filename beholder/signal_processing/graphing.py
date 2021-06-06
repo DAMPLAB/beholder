@@ -9,30 +9,29 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 '''
 import dataclasses
 import os
-from pathlib import Path
 import random as rng
-import imageio
+from pathlib import Path
 from typing import (
     List,
-    Tuple,
     Union,
 )
+
+import cv2
+import imageio
+import matplotlib
+import numpy as np
 from PIL import (
     Image,
     ImageDraw,
-    ImageFont,
 )
 
-import numpy as np
-import cv2
+# matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.backends.backend_agg import FigureCanvasAgg
+
 import tqdm
 
 from beholder.ds import (
     TiffPackage,
-    StatisticResults,
 )
 
 from beholder.signal_processing.stats import (
@@ -40,10 +39,8 @@ from beholder.signal_processing.stats import (
     CellSignal,
 )
 from beholder.utils.config import (
-    do_single_threaded,
     do_visualization_debug,
 )
-import threading
 
 
 @dataclasses.dataclass
@@ -186,13 +183,13 @@ class FrameResult:
                 upper_bound,
                 lower_bound,
                 alpha=.5,
-                color=self.color_dict[packed_tiff.channel_names[channel_index+1]],
+                color=self.color_dict[packed_tiff.channel_names[channel_index + 1]],
             )
             plt.plot(
                 time_scale,
                 median_array,
-                color=self.color_dict[packed_tiff.channel_names[channel_index+1]],
-                label=f'{packed_tiff.channel_names[channel_index+1]}',
+                color=self.color_dict[packed_tiff.channel_names[channel_index + 1]],
+                label=f'{packed_tiff.channel_names[channel_index + 1]}',
             )
             plt.legend()
         file_handle = f'{self.frame_index}_cell_signal.png'
@@ -240,7 +237,7 @@ class FrameResult:
             plt.plot(
                 time_scale,
                 fl_cell_count,
-                color=self.color_dict[packed_tiff.channel_names[channel_index+1]],
+                color=self.color_dict[packed_tiff.channel_names[channel_index + 1]],
                 label=f'{packed_tiff.channel_names[channel_index + 1]}',
             )
             plt.legend()

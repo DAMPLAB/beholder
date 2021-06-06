@@ -16,7 +16,7 @@ class ConfigOptions(metaclass=SingletonBaseClass):
 
     render_videos: bool = True
     max_processes: int = mp.cpu_count() - 1
-    single_thread_debug: bool = True
+    single_thread_debug: bool = False
     visualization_debug: bool = False
     test_write: bool = True
 

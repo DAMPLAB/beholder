@@ -28,6 +28,7 @@ from beholder.pipelines import (
     enqueue_brute_force_conversion,
     enqueue_nd2_conversion,
     enqueue_panel_detection,
+    enqueue_rpu_calculation,
 )
 from beholder.signal_processing.sigpro_utility import (
     get_channel_and_wl_data_from_xml_metadata,
@@ -48,8 +49,9 @@ app = typer.Typer()
 log = BLogger()
 
 # Jackson is lazy variables
-ND2_LOC = '/mnt/core1/3-Microscope_Images/Batch1'
-OUT_LOC = '/mnt/core1/beholder_output'
+ND2_LOC = '/mnt/core2/microscopy_images/sam_2021'
+OUT_LOC = '/mnt/core2/beholder_output'
+
 
 # ----------------------- Command Line Utility Functions -----------------------
 
@@ -231,6 +233,7 @@ def segmentation(
         segmentation_list = dataset_selection(
             input_directory=input_directory,
             filter_criteria=filter_criteria,
+            sort_criteria='alpha',
         )
     else:
         segmentation_list = runlist_validation_and_parsing(
@@ -240,13 +243,13 @@ def segmentation(
         )
     # We have our selected input files and now we have to make sure that they
     # have a home...
-    if panel_selection is not None:
-        temp_list = []
-        # We assume that the selection is a list of integer values that correspond to the index of the desired panel.
-        # e.g, if just the first panel is desired we should pass in [0], or if 2 and 7 are desired it should [2, 7]
-        for selection in panel_selection:
-            temp_list.append(segmentation_list[selection])
-        segmentation_list = temp_list
+    # if panel_selection is not None:
+    #     temp_list = []
+    #     # We assume that the selection is a list of integer values that correspond to the index of the desired panel.
+    #     # e.g, if just the first panel is desired we should pass in [0], or if 2 and 7 are desired it should [2, 7]
+    #     for selection in panel_selection:
+    #         temp_list.append(segmentation_list[selection])
+    #     segmentation_list = temp_list
     for index, input_directory in enumerate(segmentation_list):
         if logging:
             log.info(
@@ -331,6 +334,34 @@ def check_panel_detection(
     log.change_logging_level('debug')
     enqueue_panel_detection(conversion_list)
 
+@app.command()
+def calculate_rpu_calibration_value(
+        input_directory: str = OUT_LOC,
+        filter_criteria=None,
+):
+    """
+
+    Args:
+        input_directory:
+        filter_criteria:
+        runlist:
+
+    Returns:
+
+    """
+    selection_list = dataset_selection(
+        input_directory=input_directory,
+        filter_criteria=filter_criteria,
+        sort_criteria='alpha',
+    )
+    if len(selection_list) > 1:
+        raise RuntimeError('RPU Calculation presupposes a singular directory.')
+    dataset_fp = selection_list[0]
+    log.change_logging_level('debug')
+    log.debug(f'Selection for RPU Calculation: {dataset_fp}')
+    enqueue_rpu_calculation(dataset_fp)
+
+
 
 @app.command()
 def calculate_frame_drift(
@@ -370,6 +401,7 @@ def convert_nd2_to_tiffs(
         output_directory: str = OUT_LOC,
         filter_criteria=None,
         runlist: str = None,
+        force_reconversion: bool = False,
 ):
     """
 
@@ -378,10 +410,13 @@ def convert_nd2_to_tiffs(
         output_directory:
         filter_criteria:
         runlist:
+        force_reconversion:
 
     Returns:
 
     """
+    print(f'{input_directory=}')
+    print(f'{output_directory=}')
     if type(filter_criteria) == str and filter_criteria in get_color_keys():
         raise RuntimeError(
             'Cannot do channel filtration on dataset prior to generation of a '
@@ -400,7 +435,11 @@ def convert_nd2_to_tiffs(
             files=True,
         )
     log.debug(f'Conversion list: {conversion_list}')
-    enqueue_nd2_conversion(conversion_list, output_directory)
+    enqueue_nd2_conversion(
+        conversion_list=conversion_list,
+        output_directory=output_directory,
+        force_reconversion=force_reconversion,
+    )
 
 
 @app.command()
@@ -509,8 +548,8 @@ def s3_sync_download(
 @app.command()
 def beholder(
         runlist: str,
-        nd2_directory: str = '/mnt/core1/3-Microscope_Images/Batch2',
-        output_directory: str = '/mnt/core1/beholder_output',
+        nd2_directory: str = ND2_LOC,
+        output_directory: str = OUT_LOC,
         filter_criteria=None,
 ):
     # We just the pipeline in it's entirety, piping the arguments throughout
@@ -524,33 +563,35 @@ def beholder(
         stages = runlist_json['stages']
     for stage in stages:
         log.info(f'Starting Stage: {stage}...')
-        if stage == "convert_nd2_to_gif":
+        if stage == "convert_nd2_to_tiffs":
             convert_nd2_to_tiffs(
                 input_directory=nd2_directory,
                 output_directory=output_directory,
                 filter_criteria=filter_criteria,
                 runlist=runlist,
             )
-        if stage == "convert_corrupted_nd2_to_tiffs":
+        elif stage == "convert_corrupted_nd2_to_tiffs":
             convert_corrupted_nd2_to_tiffs(
                 input_directory=nd2_directory,
                 output_directory=output_directory,
                 runlist=runlist,
             )
-        if stage == "segmentation":
+        elif stage == "segmentation":
             segmentation(
                 input_directory=output_directory,
                 runlist=runlist,
             )
-        if stage == "s3_sync_upload":
+        elif stage == "s3_sync_upload":
             s3_sync_upload(
                 input_directory=output_directory,
                 runlist=runlist,
             )
-        if stage == "s3_sync_download":
+        elif stage == "s3_sync_download":
             s3_sync_download(
                 output_directory=output_directory,
             )
+        else:
+            log.warning(f'Stage {stage} not recognized as valid pipeline stage.')
         log.info(f'Finishing Stage: {stage}...')
 
 
