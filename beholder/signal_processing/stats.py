@@ -71,6 +71,7 @@ def end_of_observation_defocus_clean(
                 result.cell_signal_auxiliary_frames[i] = result.cell_signal_auxiliary_frames[i][:offset_reverse]
                 result.frame_stats[i] = result.frame_stats[i][:offset_reverse]
             result.final_frames = result.final_frames[:offset_reverse]
+            result.timestamps = result.timestamps[:offset_reverse]
             result.img_array = result.img_array[:, :offset_reverse, :, :]
             result.mask_frames = result.mask_frames[:offset_reverse]
             result.primary_frame_contours = result.primary_frame_contours[:offset_reverse]
@@ -246,7 +247,8 @@ def write_stat_record(
     num_observations = input_package.img_array.shape[1]
     fl_channels = num_channels - 1
     dt = {
-        'index': list(range(num_observations))
+        'index': list(range(num_observations)),
+        'timestamps': input_package.timestamps,
     }
     for channel in range(fl_channels):
         # First result is PhLc
@@ -255,6 +257,9 @@ def write_stat_record(
         channel_fluorescence = []
         channel_std_dev = []
         channel_cell_count = []
+        frame_size_bits = []
+        frame_size_x = []
+        frame_size_y = []
         for i in range(num_observations):
             target_frame = input_package.img_array[channel_offset][i]
             # Calculate total fluorescence of the frame
@@ -263,8 +268,14 @@ def write_stat_record(
             channel_cell_count.append(
                 len(input_package.cell_signal_auxiliary_frames[channel][i])
             )
+            frame_size_bits.append(str(target_frame.dtype))
+            frame_size_x.append(str(target_frame.shape[0]))
+            frame_size_y.append(str(target_frame.shape[1]))
         dt[f'{channel_name}_fluorescence'] = channel_fluorescence
         dt[f'{channel_name}_std_dev'] = channel_std_dev
         dt[f'{channel_name}_cell_count'] = channel_cell_count
-        df = pd.DataFrame.from_dict(dt)
-        df.to_csv(record_fp)
+        dt[f'{channel_name}_size_bits'] = frame_size_bits
+        dt[f'{channel_name}_frame_size_x'] = frame_size_x
+        dt[f'{channel_name}_frame_size_y'] = frame_size_y
+    df = pd.DataFrame.from_dict(dt)
+    df.to_csv(record_fp)

@@ -6,6 +6,7 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import (
+    List,
     Tuple,
 )
 
@@ -53,8 +54,13 @@ from beholder.signal_processing.stats import (
     write_stat_record,
     end_of_observation_defocus_clean,
 )
+from beholder.utils import BLogger
 
 import threading
+
+LOG = BLogger()
+
+
 # ----------------------- Command Line Utility Functions -----------------------
 def validate_dir_path(input_fp: str):
     if not os.path.isdir(input_fp):
@@ -71,6 +77,31 @@ def generate_mask(input_frame: np.ndarray, contours):
     )
     return out_frame
 
+
+def parse_write_array_numpy_file(input_fp: str, timestamps: List[float]):
+    np_fp = os.path.join(input_fp, 'write_array.npy')
+    flat_timestamps = [item for sublist in timestamps for item in sublist]
+    # This is a bit of spackle, should be done at the lowest part of the stack
+    # but the tree makes this a bit tricky.
+    flat_timestamps = sorted(flat_timestamps)
+    write_array = np.load(np_fp)
+    out_timestamps = []
+    for index, timestamp in enumerate(flat_timestamps):
+        if write_array[index]:
+            out_timestamps.append(timestamp)
+    out_timestamps.reverse()
+    return out_timestamps
+
+def generate_dummy_timestamps(input_fp: str):
+    # TODO: What this should look like.
+    # Traverse the file structure to find all of the tiffs.
+    # - Open these files and get the dimensionality of the image that they
+    #   represent.
+    # - Create a running tally of how many frames should exist for this entire
+    #   dataset.
+    # - Return a list of indices where each one represents a 15 minute increment
+    #   in the same second format shown above.
+    return 12
 
 # ---------------------------- Segmentation Pipeline ---------------------------
 def preprocess_primary_frame_and_find_contours(initial_frame: np.ndarray):
@@ -249,6 +280,18 @@ def enqueue_segmentation(input_fp: str):
     # themselves I'm throwing my computer into the Charles...
     channels = get_channel_and_wl_data_from_xml_metadata(tree)
     timestamps = get_time_stamps_from_xml_metadata(tree)
+    # Some of them do not have the timestamps recorded, and are thus blank.
+    # To rectify this, we annotate that these files did not contain timesteps
+    # in the log and then default to the approximate distance that was used in
+    # these experiments, 15 minutes.
+    if not timestamps:
+        LOG.warning(f'Timestamps not found for {Path(input_fp).stem}. '
+                    f'Defaulting to 15 minute increments between observations. '
+                    f'Please be cautious in using this as ground truth.'
+                    )
+        time_array = generate_dummy_timestamps()
+    else:
+        time_array = parse_write_array_numpy_file(input_fp, timestamps)
     packaged_tiffs = []
     tiff_path = os.path.join(input_fp, 'raw_tiffs')
     tiff_fp = glob.glob(tiff_path + '**/*.tiff')
@@ -264,7 +307,7 @@ def enqueue_segmentation(input_fp: str):
             continue
         wavelengths = [x[0] for x in channels[index]]
         channel_names = [x[1] for x in channels[index]]
-        ts = [x for x in timestamps[index]]
+        ts = [time_array.pop() for _ in range(array.shape[1])]
         title = Path(tiff_file).stem
         inner_pack = TiffPackage(
             img_array=array,
@@ -291,7 +334,7 @@ def enqueue_segmentation(input_fp: str):
             )
         )
     else:
-        with mp.get_context("spawn").Pool(processes=get_max_processes()) as pool:
+        with mp.get_context("spawn").Pool(processes=11) as pool:
             segmentation_results = list(
                 tqdm.tqdm(
                     pool.imap(segmentation_pipeline, packaged_tiffs),
@@ -309,13 +352,13 @@ def enqueue_segmentation(input_fp: str):
     # Write out more involved channel by channel statistics.
     for i, result in enumerate(tqdm.tqdm(segmentation_results)):
         frame_output = os.path.join(output_location, f'{i + 1}')
+        if not os.path.exists(frame_output):
+            os.mkdir(frame_output)
         summation_csv_output = os.path.join(frame_output, f'{i + 1}_summary_statistics.csv')
         write_stat_record(input_package=result, record_fp=summation_csv_output)
         for j, channel_result in enumerate(result.cell_signal_auxiliary_frames):
             channel_name = result.channel_names[j + 1]
             csv_location = os.path.join(frame_output, f'{i + 1}_{channel_name}.csv')
-            if not os.path.exists(frame_output):
-                os.mkdir(frame_output)
             with open(csv_location, 'a') as out_file:
                 writer = csv.writer(out_file)
                 for frame_result in channel_result:
@@ -323,7 +366,6 @@ def enqueue_segmentation(input_fp: str):
     if do_render_videos():
         arg_tuple = range(len(segmentation_results)), segmentation_results, output_location
         if do_single_threaded():
-            print(threading.active_count())
             for index, segmentation_result in tqdm.tqdm(
                     enumerate(segmentation_results),
                     leave=False,

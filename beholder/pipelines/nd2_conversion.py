@@ -49,7 +49,11 @@ def assert_proper_tiff_output_dimensions():
 
 # ---------------------------- CANONICAL CONVERSION ----------------------------
 
-def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
+def enqueue_nd2_conversion(
+        conversion_list: List[str],
+        output_directory: str,
+        force_reconversion: bool = False,
+):
     try:
         import bioformats as bf
         import javabridge
@@ -87,13 +91,17 @@ def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
     blank_offset = 0
     for input_fp in conversion_list:
         out_dir = os.path.join(output_directory, Path(input_fp).stem)
+        if not force_reconversion:
+            if os.path.exists(out_dir):
+                log.info(f'Prior result found for dataset: {input_fp}. Skipping.')
+                continue
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
         metadata = bf.get_omexml_metadata(input_fp)
         channel_listings = get_channel_and_wl_data_from_xml_metadata(
             ETree.ElementTree(ETree.fromstring(metadata))
         )
-        log.info(f'Detected Channels for {Path(input_fp).stem}: {channel_listings}')
+        log.debug(f'Detected Channels for {Path(input_fp).stem}: {channel_listings}')
         corruption_flag = False
         for channel_listing in channel_listings:
             for channel_entry in channel_listing:
@@ -132,21 +140,6 @@ def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
         log.debug(f'Detected Channels: {channels}')
         log.debug(f'------------------')
         frame_writes = np.zeros(len(sizes) * num_of_frames)
-        # ----------------------------------------- START BLANK FRAME DETECTION ----------------------------------------
-        for i in tqdm.tqdm(
-                range(len(sizes)),
-                desc=f"Detecting blank frames for {Path(input_fp).stem}..."):
-            for j in range(num_of_frames):
-                position = (i * num_of_frames) + j
-                print(position)
-                with bf.ImageReader(input_fp) as image_reader:
-                    blank_check = image_reader.read(c=1, t=j, series=i)
-                if np.sum(blank_check) == 0:
-                    frame_writes[position] = 0
-                    continue
-                else:
-                    frame_writes[position] = 1
-        # ---------------------------------------------- START FRAME WRITES --------------------------------------------
         for i in tqdm.tqdm(
                 range(len(names)),
                 desc=f"Converting {Path(input_fp).stem}..."):
@@ -154,10 +147,13 @@ def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
             for j in range(num_of_frames):
                 with bf.ImageReader(input_fp, perform_init=True) as image_reader:
                     blank_check = image_reader.read(c=1, t=j, series=i)
+                    position = (i * num_of_frames) + j
                 if np.sum(blank_check) == 0:
                     blank_offset += 1
+                    frame_writes[position] = 0
                     continue
                 else:
+                    frame_writes[position] = 1
                     channel_array = []
                     for k in range(channels):
                         with bf.ImageReader(input_fp, perform_init=True) as image_reader:
@@ -177,10 +173,9 @@ def enqueue_nd2_conversion(conversion_list: List[str], output_directory: str):
         write_save_path = os.path.join(out_dir, f'write_array.npy')
         with open(metadata_save_path, 'w') as out_file:
             log.debug(f'Metadata being saved to {metadata_save_path}')
-        out_file.write(metadata)
-        with open(write_save_path, 'w') as out_file:
-            log.debug(f'Frame write information being saved to {write_save_path}')
-            np.save(frame_writes, out_file)
+            out_file.write(metadata)
+        log.debug(f'Frame write information being saved to {write_save_path}')
+        np.save(file=write_save_path, arr=frame_writes)
     javabridge.kill_vm()
 
 

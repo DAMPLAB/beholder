@@ -21,3 +21,7 @@ from .nd2_conversion import (
 from .panel_detection import (
     enqueue_panel_detection,
 )
+
+from .rpu_conversion import (
+    enqueue_rpu_calculation,
+)
