@@ -25,3 +25,7 @@ from .panel_detection import (
 from .rpu_conversion import (
     enqueue_rpu_calculation,
 )
+
+from .longform_trend_analysis import (
+    enqueue_lf_analysis,
+)
