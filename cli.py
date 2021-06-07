@@ -598,16 +598,16 @@ def s3_sync_download(
 @app.command()
 def beholder(
         runlist: str,
-        nd2_directory: str = ND2_LOC,
-        output_directory: str = OUT_LOC,
+        nd2_directory: str = None,
+        output_directory: str = None,
         filter_criteria=None,
 ):
     # We just the pipeline in it's entirety, piping the arguments throughout
     # the entirety of the program.
     ConfigOptions()
     if nd2_directory is None:
-        nd2_directory = ConfigOptions.nd2_location
-        output_directory = ConfigOptions.output_location
+        nd2_directory = ConfigOptions().nd2_location
+        output_directory = ConfigOptions().output_location
     log.info('Beholder START.')
     if not os.path.isfile(runlist):
         raise RuntimeError(f'Cannot find runlist at {runlist}')

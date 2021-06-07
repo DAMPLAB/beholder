@@ -14,7 +14,6 @@ def enqueue_rpu_calculation(input_fp: str):
         print(sum_stat_path)
         stat_df = pd.read_csv(sum_stat_path)
         df = pd.concat([df, stat_df])
-    print('Hewwo')
     # We then calculate the median value of all of the concatened dudes
     out_dict = {
         'fl_median_value': df['YFP_fluorescence'].median(),
