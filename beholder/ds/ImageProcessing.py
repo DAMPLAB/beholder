@@ -28,6 +28,7 @@ class TiffPackage:
     labeled_frames: List[np.ndarray] = None
     final_frames: List[np.ndarray] = None
     mask_frames: List[np.ndarray] = None
+    timestamps: List[float] = None
 
     primary_frame_contours: List = None
     auxiliary_frame_contours: List = None
