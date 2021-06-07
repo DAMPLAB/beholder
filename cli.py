@@ -210,7 +210,7 @@ def dataset_selection(
 
 @app.command()
 def segmentation(
-        input_directory: str = '/mnt/core2/beholder_output',
+        input_directory: str = None,
         render_videos: bool = True,
         logging: bool = True,
         filter_criteria=None,
@@ -231,6 +231,8 @@ def segmentation(
 
     """
     ConfigOptions(render_videos=render_videos)
+    if input_directory is None:
+        input_directory = ConfigOptions.output_location
     if runlist is None:
         segmentation_list = dataset_selection(
             input_directory=input_directory,
@@ -301,7 +303,7 @@ def runlist_validation_and_parsing(
 # -------------------------- Date Generation Commands --------------------------
 @app.command()
 def check_panel_detection(
-        input_directory: str = ND2_LOC,
+        input_directory: str = None,
         filter_criteria=None,
         runlist: str = None,
 ):
@@ -315,6 +317,9 @@ def check_panel_detection(
     Returns:
 
     """
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions.nd2_location
     if type(filter_criteria) == str and filter_criteria in get_color_keys():
         raise RuntimeError(
             'Cannot do channel filtration on dataset prior to generation of a '
@@ -339,7 +344,7 @@ def check_panel_detection(
 
 @app.command()
 def calculate_rpu_calibration_value(
-        input_directory: str = OUT_LOC,
+        input_directory: str = None,
         filter_criteria=None,
 ):
     """
@@ -352,6 +357,9 @@ def calculate_rpu_calibration_value(
     Returns:
 
     """
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions.output_location
     selection_list = dataset_selection(
         input_directory=input_directory,
         filter_criteria=filter_criteria,
@@ -367,7 +375,7 @@ def calculate_rpu_calibration_value(
 
 @app.command()
 def calculate_frame_drift(
-        input_directory: str = '/mnt/core2/beholder_output',
+        input_directory: str = None,
         render_videos: bool = True,
         logging: bool = True,
         filter_criteria=3,
@@ -377,6 +385,9 @@ def calculate_frame_drift(
     # function. Our stabilization function should output a JSON with a list
     # of xy transforms for each of the observation sets. We then use that
     # stabilization data during cell-flow, cell-tracking, and segmentation.
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions.output_location
     stabilization_list = dataset_selection(
         input_directory=input_directory,
         filter_criteria=filter_criteria,
@@ -400,7 +411,7 @@ def calculate_frame_drift(
 def perform_lf_analysis(
         runlist: str,
         calibration_rpu_dataset: str,
-        input_directory: str = OUT_LOC,
+        input_directory,
 ):
     """
 
@@ -412,6 +423,9 @@ def perform_lf_analysis(
     Returns:
 
     """
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions.output_location
     bound_datasets = runlist_validation_and_parsing(
         input_directory=input_directory,
         runlist_fp=runlist,
@@ -428,12 +442,11 @@ def perform_lf_analysis(
     )
 
 
-
 # ------------------------------ Utility Commands ------------------------------
 @app.command()
 def convert_nd2_to_tiffs(
-        input_directory: str = ND2_LOC,
-        output_directory: str = OUT_LOC,
+        input_directory: str = None,
+        output_directory: str = None,
         filter_criteria=None,
         runlist: str = None,
         force_reconversion: bool = False,
@@ -450,8 +463,10 @@ def convert_nd2_to_tiffs(
     Returns:
 
     """
-    print(f'{input_directory=}')
-    print(f'{output_directory=}')
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions.nd2_location
+        output_directory = ConfigOptions.output_location
     if type(filter_criteria) == str and filter_criteria in get_color_keys():
         raise RuntimeError(
             'Cannot do channel filtration on dataset prior to generation of a '
@@ -589,6 +604,10 @@ def beholder(
 ):
     # We just the pipeline in it's entirety, piping the arguments throughout
     # the entirety of the program.
+    ConfigOptions()
+    if nd2_directory is None:
+        nd2_directory = ConfigOptions.nd2_location
+        output_directory = ConfigOptions.output_location
     log.info('Beholder START.')
     if not os.path.isfile(runlist):
         raise RuntimeError(f'Cannot find runlist at {runlist}')

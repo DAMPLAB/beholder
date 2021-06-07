@@ -1,9 +1,5 @@
 {
   "input_datasets": [
-    "1-SR_1_5_6hPre-C_PlainM9_TS_MC1",
-    "2-SR_1_5_6hPre-C_1mM_IPTG_TS_MC1",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC1",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC2",
     "3-SR_1_5_6hPre-C_PlainM9_TS_MC3",
     "3-SR_1_5_6hPre-C_PlainM9_TS_MC4",
     "3-SR_1_5_6hPre-C_PlainM9_TS_MC5",
@@ -20,7 +16,6 @@
   "num_observations": [
   ],
   "stages": [
-    "convert_nd2_to_tiffs",
     "segmentation"
   ],
   "settings": []
