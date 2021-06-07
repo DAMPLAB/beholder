@@ -1,10 +1,11 @@
 import multiprocessing as mp
+import os
 from dataclasses import dataclass
 from typing import (
     Dict,
     List,
 )
-
+import json
 from rich.console import Console
 
 from beholder.utils.gof import SingletonBaseClass
@@ -19,6 +20,8 @@ class ConfigOptions(metaclass=SingletonBaseClass):
     single_thread_debug: bool = False
     visualization_debug: bool = False
     test_write: bool = True
+    nd2_location: str = None
+    output_location: str = None
 
     def __post_init__(self):
         if self.color_lut is None:
@@ -29,6 +32,12 @@ class ConfigOptions(metaclass=SingletonBaseClass):
                 'YFP': 'yellow',
                 'GFP': 'green',
             }
+        if os.path.exists('config.json'):
+            with open('config.json') as input_config:
+                in_json = json.load(input_config)
+                if 'nd2_location' in in_json and "output_location" in in_json:
+                    self.nd2_location = in_json['nd2_location']
+                    self.output_location = in_json['output_location']
 
 
 def get_color_keys() -> List[str]:
@@ -57,6 +66,14 @@ def convert_channel_name_to_color(channel_name: str) -> str:
 
 def do_test_write() -> bool:
     return ConfigOptions().test_write
+
+
+def get_nd2_file_location() -> str:
+    return ConfigOptions().nd2_location
+
+
+def get_output_file_location() -> str:
+    return ConfigOptions().output_location
 
 
 def beholder_text(input_text: str, color: str = '#49306B'):
