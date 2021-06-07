@@ -17,3 +17,15 @@ from .nd2_conversion import (
     enqueue_nd2_conversion,
     enqueue_brute_force_conversion,
 )
+
+from .panel_detection import (
+    enqueue_panel_detection,
+)
+
+from .rpu_conversion import (
+    enqueue_rpu_calculation,
+)
+
+from .longform_trend_analysis import (
+    enqueue_lf_analysis,
+)

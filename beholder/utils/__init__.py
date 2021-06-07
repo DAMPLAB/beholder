@@ -17,3 +17,4 @@ from .config import (
     beholder_text,
     get_color_keys,
 )
+from .logging import BLogger

@@ -7,6 +7,7 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
+import csv
 import os
 from dataclasses import dataclass
 from typing import List
@@ -17,7 +18,9 @@ import pandas as pd
 
 from beholder.signal_processing.signal_transform import (
     debug_image,
-    downsample_image,
+)
+from beholder.ds import (
+    TiffPackage,
 )
 
 
@@ -43,6 +46,37 @@ class CellStats:
     median_signal: float
     std_dev: float
     filtered_len: int
+
+
+def end_of_observation_defocus_clean(
+        segmentation_results: List[TiffPackage],
+        deviation_num: int = 2,
+):
+    ret_list = []
+    for result in segmentation_results:
+        raw_stats: List[CellStats] = result.frame_stats[0]
+        raw_cell_count = [len(x[i].raw_signal) for i, x in enumerate(raw_stats)]
+        cell_count_std = np.std(raw_cell_count)
+        reverse_index = None
+        for index, cell_count in reversed(list(enumerate(raw_cell_count))):
+            if cell_count < (np.median(raw_cell_count) - cell_count_std * deviation_num):
+                reverse_index = index
+                break
+        # Then we have to slice everyone if it exists.
+        if reverse_index is not None:
+            offset_reverse = reverse_index-1
+            for i in range(len(result.auxiliary_frame_contours)):
+                result.auxiliary_frame_contours[i] = result.auxiliary_frame_contours[i][:offset_reverse]
+                result.labeled_auxiliary_frames[i] = result.labeled_auxiliary_frames[i][:offset_reverse]
+                result.cell_signal_auxiliary_frames[i] = result.cell_signal_auxiliary_frames[i][:offset_reverse]
+                result.frame_stats[i] = result.frame_stats[i][:offset_reverse]
+            result.final_frames = result.final_frames[:offset_reverse]
+            result.timestamps = result.timestamps[:offset_reverse]
+            result.img_array = result.img_array[:, :offset_reverse, :, :]
+            result.mask_frames = result.mask_frames[:offset_reverse]
+            result.primary_frame_contours = result.primary_frame_contours[:offset_reverse]
+        ret_list.append(result)
+    return ret_list
 
 
 def fluorescence_detection(
@@ -206,33 +240,42 @@ def write_raw_frames(
 
 
 def write_stat_record(
-        total_statistics,
-        record_name: str,
+        input_package: TiffPackage,
+        record_fp: str,
 ):
-    channel_one_stats = []
-    channel_two_stats = []
-    for index, stat_pair in enumerate(total_statistics):
-        c1_stat, c2_stat = stat_pair
-        channel_one_stats.append(c1_stat)
-        channel_two_stats.append(c2_stat)
+    num_channels = input_package.img_array.shape[0]
+    num_observations = input_package.img_array.shape[1]
+    fl_channels = num_channels - 1
     dt = {
-        'index': list(range(len(total_statistics))),
-        'ch_1_fluorescence': [stat[0] for stat in channel_one_stats],
-        'ch_1_std_dev': [stat[1] for stat in channel_one_stats],
-        'ch_1_cell_count': [stat[2] for stat in channel_one_stats],
-        'ch_2_fluorescence': [stat[0] for stat in channel_two_stats],
-        'ch_2_std_dev': [stat[1] for stat in channel_two_stats],
-        'ch_2_cell_count': [stat[2] for stat in channel_two_stats],
+        'index': list(range(num_observations)),
+        'timestamps': input_package.timestamps,
     }
-    # TODO: Sloppy, time crunch.
+    for channel in range(fl_channels):
+        # First result is PhLc
+        channel_offset = channel + 1
+        channel_name = input_package.channel_names[channel_offset]
+        channel_fluorescence = []
+        channel_std_dev = []
+        channel_cell_count = []
+        frame_size_bits = []
+        frame_size_x = []
+        frame_size_y = []
+        for i in range(num_observations):
+            target_frame = input_package.img_array[channel_offset][i]
+            # Calculate total fluorescence of the frame
+            channel_fluorescence.append(np.sum(target_frame))
+            channel_std_dev.append(np.std(target_frame))
+            channel_cell_count.append(
+                len(input_package.cell_signal_auxiliary_frames[channel][i])
+            )
+            frame_size_bits.append(str(target_frame.dtype))
+            frame_size_x.append(str(target_frame.shape[0]))
+            frame_size_y.append(str(target_frame.shape[1]))
+        dt[f'{channel_name}_fluorescence'] = channel_fluorescence
+        dt[f'{channel_name}_std_dev'] = channel_std_dev
+        dt[f'{channel_name}_cell_count'] = channel_cell_count
+        dt[f'{channel_name}_size_bits'] = frame_size_bits
+        dt[f'{channel_name}_frame_size_x'] = frame_size_x
+        dt[f'{channel_name}_frame_size_y'] = frame_size_y
     df = pd.DataFrame.from_dict(dt)
-    df.to_csv(record_name)
-    # try:
-    #     with open(record_name, 'w') as csvfile:
-    #         writer = csv.DictWriter(csvfile, fieldnames=list(dt.keys()))
-    #         writer.writeheader()
-    #         for data in dt:
-    #             writer.writerow(data)
-    # except IOError as e:
-    #     print(f'I/O Error: {e}')
-    #
+    df.to_csv(record_fp)
