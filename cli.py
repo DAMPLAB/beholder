@@ -215,6 +215,9 @@ def segmentation(
         logging: bool = True,
         filter_criteria=None,
         runlist: str = None,
+        do_segment: bool = True,
+        do_defocus: bool = True,
+        do_render_videos: bool = True,
         panel_selection: List[int] = None,
 ):
     """
@@ -263,7 +266,12 @@ def segmentation(
             log.info(
                 '-' * 88
             )
-        enqueue_segmentation(input_directory)
+        enqueue_segmentation(
+            input_fp=input_directory,
+            do_segment=do_segment,
+            do_defocus=do_defocus,
+            do_render_videos=do_render_videos,
+        )
     typer.Exit()
 
 
@@ -449,7 +457,7 @@ def convert_nd2_to_tiffs(
         output_directory: str = None,
         filter_criteria=None,
         runlist: str = None,
-        force_reconversion: bool = False,
+        force_reconversion: bool = True,
 ):
     """
 
@@ -615,31 +623,63 @@ def beholder(
     with open(runlist, 'r') as input_file:
         runlist_json = json.load(input_file)
         stages = runlist_json['stages']
+        stage_settings = runlist_json['settings']
     for stage in stages:
         log.info(f'Starting Stage: {stage}...')
         if stage == "convert_nd2_to_tiffs":
-            convert_nd2_to_tiffs(
-                input_directory=nd2_directory,
-                output_directory=output_directory,
-                filter_criteria=filter_criteria,
-                runlist=runlist,
-            )
+            if "convert_nd2_to_tiffs" in stage_settings:
+                convert_nd2_to_tiffs(
+                    input_directory=nd2_directory,
+                    output_directory=output_directory,
+                    filter_criteria=filter_criteria,
+                    runlist=runlist,
+                    **stage_settings['convert_nd2_to_tiffs'],
+                )
+            else:
+                convert_nd2_to_tiffs(
+                    input_directory=nd2_directory,
+                    output_directory=output_directory,
+                    filter_criteria=filter_criteria,
+                    runlist=runlist,
+                )
         elif stage == "convert_corrupted_nd2_to_tiffs":
-            convert_corrupted_nd2_to_tiffs(
-                input_directory=nd2_directory,
-                output_directory=output_directory,
-                runlist=runlist,
-            )
+            if "convert_corrupted_nd2_to_tiffs" in stage_settings:
+                convert_corrupted_nd2_to_tiffs(
+                    input_directory=nd2_directory,
+                    output_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings["convert_corrupted_nd2_to_tiffs"]
+                )
+            else:
+                convert_corrupted_nd2_to_tiffs(
+                    input_directory=nd2_directory,
+                    output_directory=output_directory,
+                    runlist=runlist,
+                )
         elif stage == "segmentation":
-            segmentation(
-                input_directory=output_directory,
-                runlist=runlist,
-            )
+            if "segmenation" in stage_settings:
+                segmentation(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings['segmentation']
+                )
+            else:
+                segmentation(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                )
         elif stage == "s3_sync_upload":
-            s3_sync_upload(
-                input_directory=output_directory,
-                runlist=runlist,
-            )
+            if "s3_sync_upload" in stage_settings:
+                s3_sync_upload(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings['s3_sync_upload']
+                )
+            else:
+                s3_sync_upload(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                )
         elif stage == "s3_sync_download":
             s3_sync_download(
                 output_directory=output_directory,

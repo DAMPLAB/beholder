@@ -265,15 +265,15 @@ def write_stat_record(
             # Calculate total fluorescence of the frame
             channel_fluorescence.append(np.sum(target_frame))
             channel_std_dev.append(np.std(target_frame))
-            channel_cell_count.append(
-                len(input_package.cell_signal_auxiliary_frames[channel][i])
-            )
+            # channel_cell_count.append(
+            #     len(input_package.cell_signal_auxiliary_frames[channel][i])
+            # )
             frame_size_bits.append(str(target_frame.dtype))
             frame_size_x.append(str(target_frame.shape[0]))
             frame_size_y.append(str(target_frame.shape[1]))
         dt[f'{channel_name}_fluorescence'] = channel_fluorescence
         dt[f'{channel_name}_std_dev'] = channel_std_dev
-        dt[f'{channel_name}_cell_count'] = channel_cell_count
+        # dt[f'{channel_name}_cell_count'] = channel_cell_count
         dt[f'{channel_name}_size_bits'] = frame_size_bits
         dt[f'{channel_name}_frame_size_x'] = frame_size_x
         dt[f'{channel_name}_frame_size_y'] = frame_size_y
