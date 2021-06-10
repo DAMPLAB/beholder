@@ -43,20 +43,16 @@ from beholder.signal_processing.sigpro_utility import (
     get_time_stamps_from_xml_metadata,
     ingress_tiff_file,
 )
-from beholder.utils.config import (
-    get_max_processes,
-    do_visualization_debug,
-    do_render_videos,
-    do_single_threaded,
-    convert_channel_name_to_color,
-)
 from beholder.signal_processing.stats import (
     write_stat_record,
     end_of_observation_defocus_clean,
 )
 from beholder.utils import BLogger
-
-import threading
+from beholder.utils.config import (
+    do_visualization_debug,
+    do_single_threaded,
+    convert_channel_name_to_color,
+)
 
 LOG = BLogger()
 
@@ -78,6 +74,15 @@ def generate_mask(input_frame: np.ndarray, contours):
     return out_frame
 
 
+def linearize_timestamps(timestamps: List[List[float]]):
+    end_time = 0
+    for panel_timestamp in timestamps:
+        for index, timestamp in enumerate(panel_timestamp):
+            panel_timestamp[index] = timestamp + end_time
+        end_time = panel_timestamp[-1]
+    return timestamps
+
+
 def parse_write_array_numpy_file(input_fp: str, timestamps: List[float]):
     np_fp = os.path.join(input_fp, 'write_array.npy')
     flat_timestamps = [item for sublist in timestamps for item in sublist]
@@ -92,6 +97,7 @@ def parse_write_array_numpy_file(input_fp: str, timestamps: List[float]):
     out_timestamps.reverse()
     return out_timestamps
 
+
 def generate_dummy_timestamps(input_fp: str):
     # TODO: What this should look like.
     # Traverse the file structure to find all of the tiffs.
@@ -102,6 +108,7 @@ def generate_dummy_timestamps(input_fp: str):
     # - Return a list of indices where each one represents a 15 minute increment
     #   in the same second format shown above.
     return 12
+
 
 # ---------------------------- Segmentation Pipeline ---------------------------
 def preprocess_primary_frame_and_find_contours(initial_frame: np.ndarray):
@@ -267,7 +274,12 @@ def segmentation_pipeline(
     return packaged_tiff
 
 
-def enqueue_segmentation(input_fp: str):
+def enqueue_segmentation(
+        input_fp: str,
+        do_segment: bool,
+        do_defocus: bool,
+        do_render_videos: bool,
+):
     # We should have a top level metadata xml file and then we have a directory
     # called raw_tiffs that has all of the stuff that we really need to work on.
     # We need to take the xml file and extract the channels, sizes, and
@@ -280,6 +292,7 @@ def enqueue_segmentation(input_fp: str):
     # themselves I'm throwing my computer into the Charles...
     channels = get_channel_and_wl_data_from_xml_metadata(tree)
     timestamps = get_time_stamps_from_xml_metadata(tree)
+    timestamps = linearize_timestamps(timestamps)
     # Some of them do not have the timestamps recorded, and are thus blank.
     # To rectify this, we annotate that these files did not contain timesteps
     # in the log and then default to the approximate distance that was used in
@@ -322,31 +335,40 @@ def enqueue_segmentation(input_fp: str):
     output_location = os.path.join(input_fp, 'segmentation_output')
     if not os.path.exists(output_location):
         os.mkdir(output_location)
-    if do_single_threaded():
-        segmentation_results = list(
-            tqdm.tqdm(
-                map(
-                    segmentation_pipeline,
-                    packaged_tiffs
-                ),
-                total=len(packaged_tiffs),
-                desc="Performing Segmentation"
-            )
-        )
-    else:
-        with mp.get_context("spawn").Pool(processes=11) as pool:
+    if do_segment:
+        if do_single_threaded():
             segmentation_results = list(
                 tqdm.tqdm(
-                    pool.imap(segmentation_pipeline, packaged_tiffs),
-                    total=len(packaged_tiffs)
+                    map(
+                        segmentation_pipeline,
+                        packaged_tiffs
+                    ),
+                    total=len(packaged_tiffs),
+                    desc="Performing Segmentation"
                 )
             )
+        else:
+            with mp.get_context("spawn").Pool() as pool:
+                segmentation_results = list(
+                    tqdm.tqdm(
+                        pool.imap(segmentation_pipeline, packaged_tiffs),
+                        total=len(packaged_tiffs)
+                    )
+                )
+    else:
+        segmentation_results = packaged_tiffs
     # ------------------- EXIT GRACEFULLY IF SEGMENTATION FAILED  --------------
     if not segmentation_results:
+        LOG.error(
+            f'Unable to find results for {Path(input_fp).stem}. '
+            f'Please investigate.'
+        )
         return
     # --------------------- PURGE UNWANTED 'DE-FOCUSED' IMAGES  ----------------
-    segmentation_results = end_of_observation_defocus_clean(segmentation_results)
-
+    if do_defocus:
+        segmentation_results = end_of_observation_defocus_clean(
+            segmentation_results,
+        )
     # ---------------- ENSURE OUTPUT DIRECTORY EXISTS AND WRITE OUT  -----------
     # Write out summary statistics
     # Write out more involved channel by channel statistics.
@@ -356,30 +378,22 @@ def enqueue_segmentation(input_fp: str):
             os.mkdir(frame_output)
         summation_csv_output = os.path.join(frame_output, f'{i + 1}_summary_statistics.csv')
         write_stat_record(input_package=result, record_fp=summation_csv_output)
-        for j, channel_result in enumerate(result.cell_signal_auxiliary_frames):
-            channel_name = result.channel_names[j + 1]
-            csv_location = os.path.join(frame_output, f'{i + 1}_{channel_name}.csv')
-            with open(csv_location, 'a') as out_file:
-                writer = csv.writer(out_file)
-                for frame_result in channel_result:
-                    writer.writerow([k.sum_signal for k in frame_result])
-    if do_render_videos():
-        arg_tuple = range(len(segmentation_results)), segmentation_results, output_location
-        if do_single_threaded():
-            for index, segmentation_result in tqdm.tqdm(
-                    enumerate(segmentation_results),
-                    leave=False,
-                    desc="Generating Frame Results"
-            ):
-                input_args = index, segmentation_result, output_location
-                generate_frame_visualization(input_args)
-        else:
-            with mp.get_context("spawn").Pool(processes=get_max_processes()) as pool:
-                tqdm.tqdm(
-                    pool.imap(
-                        generate_frame_visualization,
-                        arg_tuple,
-                    ),
-                    desc="Generating Visualizations",
-                    total=len(segmentation_results)
-                )
+        if do_segment:
+            for j, channel_result in enumerate(result.cell_signal_auxiliary_frames):
+                channel_name = result.channel_names[j + 1]
+                csv_location = os.path.join(frame_output, f'{i + 1}_{channel_name}.csv')
+                with open(csv_location, 'a') as out_file:
+                    writer = csv.writer(out_file)
+                    for frame_result in channel_result:
+                        writer.writerow([k.sum_signal for k in frame_result])
+    # TODO: Fix local OpenCV conflict generated by installation of ASCIICinema.
+    # If running local, quick fix is to change input structure to TKAGG, but
+    # you should just fix it when you have the time.
+    if do_segment and do_render_videos:
+        for index, segmentation_result in tqdm.tqdm(
+                enumerate(segmentation_results),
+                leave=False,
+                desc="Generating Frame Results"
+        ):
+            input_args = index, segmentation_result, output_location
+            generate_frame_visualization(input_args)

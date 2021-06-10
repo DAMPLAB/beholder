@@ -1,22 +1,16 @@
 {
   "input_datasets": [
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC3",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC4",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC5",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC6",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC7",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC8",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC9",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC10",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC11"
-  ],
-  "bound_datasets": [
-    "1-SR_1_5_6hPre-C_PlainM9_TS_MC1"
+    "3-SR_1_9_6hPre-C_PlainM9_TS_MC6"
   ],
   "num_observations": [
   ],
   "stages": [
     "segmentation"
   ],
-  "settings": []
+  "settings": {
+    "segmentation": {
+      "do_segment": false,
+      "do_defocus": false
+    }
+  }
 }

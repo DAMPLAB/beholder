@@ -20,8 +20,10 @@ class ConfigOptions(metaclass=SingletonBaseClass):
     single_thread_debug: bool = False
     visualization_debug: bool = False
     test_write: bool = True
+
     nd2_location: str = None
     output_location: str = None
+    s3_bucket: str = None
 
     def __post_init__(self):
         if self.color_lut is None:
@@ -35,9 +37,12 @@ class ConfigOptions(metaclass=SingletonBaseClass):
         if os.path.exists('config.json'):
             with open('config.json') as input_config:
                 in_json = json.load(input_config)
-                if 'nd2_location' in in_json and "output_location" in in_json:
+                if 'nd2_location' in in_json:
                     self.nd2_location = in_json['nd2_location']
+                if "output_location" in in_json:
                     self.output_location = in_json['output_location']
+                if "s3_bucket" in in_json:
+                    self.output_location = in_json['s3_bucket']
 
 
 def get_color_keys() -> List[str]:

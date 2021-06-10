@@ -29,3 +29,7 @@ from .rpu_conversion import (
 from .longform_trend_analysis import (
     enqueue_lf_analysis,
 )
+
+from .generate_figures import (
+    enqueue_figure_generation,
+)
