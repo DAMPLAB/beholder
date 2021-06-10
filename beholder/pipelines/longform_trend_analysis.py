@@ -7,23 +7,35 @@ Roadmap:
 Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
-import os
+import datetime
 import glob
+import os
+import shutil
+from pathlib import Path
 from typing import (
     List,
 )
-from pathlib import Path
+
 import pandas as pd
 import tqdm
+
+from beholder.utils import (
+    BLogger,
+)
+
+LOG = BLogger()
+from sklearn.preprocessing import scale
 
 
 def enqueue_lf_analysis(
         input_datasets: List[str],
         calibration_rpu_dataset_fp: str,
+        runlist_fp: str,
 ):
     rpu_df = pd.read_csv(calibration_rpu_dataset_fp)
     med_value = rpu_df['fl_median_value'][0]
     df = pd.DataFrame(columns=['time_start', 'time_stop', 'YFP_fluorescence'])
+    offset_datetime = 0
     for index, dataset_fp in enumerate(input_datasets):
         segmentation_res_root = os.path.join(dataset_fp, 'segmentation_output')
         result_folders = glob.glob(f'{segmentation_res_root}/*')
@@ -54,16 +66,32 @@ def enqueue_lf_analysis(
             if l_time_stop > time_stop:
                 time_stop = l_time_stop
             signal_df = df1.loc[:, df1.columns.str.endswith('_fluorescence')]
-            signal_med = signal_df['YFP_fluorescence'].median()
-            sig_delta = med_value - signal_med
-            df1['YFP_fluorescence'] = df1['YFP_fluorescence'] + sig_delta
-            rolling_sum += df1['YFP_fluorescence'].median()
+            # THE CORRECTION
+            df1['YFP_fluorescence'] = df1['YFP_fluorescence'] / med_value
+            rolling_sum += df1['YFP_fluorescence'].mean()
+            total_res += 1
+        if not total_res:
+            continue
         median_fl = rolling_sum / total_res
         dt = {
-            'time_start': [time_start],
-            'time_stop': [time_stop],
+            'time_start': [time_start + offset_datetime],
+            'time_stop': [time_stop + offset_datetime],
             'YFP_fluorescence': [median_fl],
         }
         df2 = pd.DataFrame.from_dict(dt)
         df = df.append(df2)
-    df.to_csv('test.csv')
+        offset_datetime = time_stop
+    tl_dir = Path(input_datasets[0]).parent.absolute()
+    print(1)
+    runtime = datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+    output_path = os.path.join(tl_dir, 'analysis_results', f'{runtime}_results')
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+    print(2)
+    result_path = os.path.join(
+        output_path,
+        'longform_trend_analysis.csv'
+    )
+    shutil.copy(runlist_fp, output_path)
+    LOG.info(f'Results available at {result_path}')
+    df.to_csv(result_path)
