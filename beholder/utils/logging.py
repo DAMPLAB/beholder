@@ -43,6 +43,9 @@ class BLogger(metaclass=SingletonBaseClass):
         # otherwise it's a no-op.
         colorama.init(autoreset=True)
 
+    # def write_out(self, output_fp: str):
+    #     self.log.()
+
     def change_logging_level(self, logging_level: str):
         '''
         Args:

@@ -74,6 +74,15 @@ def generate_mask(input_frame: np.ndarray, contours):
     return out_frame
 
 
+def linearize_timestamps(timestamps: List[List[float]]):
+    end_time = 0
+    for panel_timestamp in timestamps:
+        for index, timestamp in enumerate(panel_timestamp):
+            panel_timestamp[index] = timestamp + end_time
+        end_time = panel_timestamp[-1]
+    return timestamps
+
+
 def parse_write_array_numpy_file(input_fp: str, timestamps: List[float]):
     np_fp = os.path.join(input_fp, 'write_array.npy')
     flat_timestamps = [item for sublist in timestamps for item in sublist]
@@ -283,6 +292,7 @@ def enqueue_segmentation(
     # themselves I'm throwing my computer into the Charles...
     channels = get_channel_and_wl_data_from_xml_metadata(tree)
     timestamps = get_time_stamps_from_xml_metadata(tree)
+    timestamps = linearize_timestamps(timestamps)
     # Some of them do not have the timestamps recorded, and are thus blank.
     # To rectify this, we annotate that these files did not contain timesteps
     # in the log and then default to the approximate distance that was used in
