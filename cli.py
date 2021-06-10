@@ -30,6 +30,7 @@ from beholder.pipelines import (
     enqueue_panel_detection,
     enqueue_rpu_calculation,
     enqueue_lf_analysis,
+    enqueue_figure_generation,
 )
 
 from beholder.signal_processing.sigpro_utility import (
@@ -49,10 +50,6 @@ warnings.filterwarnings("ignore")
 console = Console()
 app = typer.Typer()
 log = BLogger()
-
-# Jackson is lazy variables
-ND2_LOC = '/mnt/core2/microscopy_images/sam_2021'
-OUT_LOC = '/mnt/core2/beholder_output'
 
 
 # ----------------------- Command Line Utility Functions -----------------------
@@ -215,6 +212,9 @@ def segmentation(
         logging: bool = True,
         filter_criteria=None,
         runlist: str = None,
+        do_segment: bool = True,
+        do_defocus: bool = True,
+        do_render_videos: bool = True,
         panel_selection: List[int] = None,
 ):
     """
@@ -225,6 +225,9 @@ def segmentation(
         logging:
         filter_criteria:
         runlist:
+        do_segment:
+        do_defocus:
+        do_render_videos:
         panel_selection:
 
     Returns:
@@ -232,7 +235,7 @@ def segmentation(
     """
     ConfigOptions(render_videos=render_videos)
     if input_directory is None:
-        input_directory = ConfigOptions.output_location
+        input_directory = ConfigOptions().output_location
     if runlist is None:
         segmentation_list = dataset_selection(
             input_directory=input_directory,
@@ -263,7 +266,12 @@ def segmentation(
             log.info(
                 '-' * 88
             )
-        enqueue_segmentation(input_directory)
+        enqueue_segmentation(
+            input_fp=input_directory,
+            do_segment=do_segment,
+            do_defocus=do_defocus,
+            do_render_videos=do_render_videos,
+        )
     typer.Exit()
 
 
@@ -319,7 +327,7 @@ def check_panel_detection(
     """
     ConfigOptions()
     if input_directory is None:
-        input_directory = ConfigOptions.nd2_location
+        input_directory = ConfigOptions().nd2_location
     if type(filter_criteria) == str and filter_criteria in get_color_keys():
         raise RuntimeError(
             'Cannot do channel filtration on dataset prior to generation of a '
@@ -359,7 +367,7 @@ def calculate_rpu_calibration_value(
     """
     ConfigOptions()
     if input_directory is None:
-        input_directory = ConfigOptions.output_location
+        input_directory = ConfigOptions().output_location
     selection_list = dataset_selection(
         input_directory=input_directory,
         filter_criteria=filter_criteria,
@@ -387,7 +395,7 @@ def calculate_frame_drift(
     # stabilization data during cell-flow, cell-tracking, and segmentation.
     ConfigOptions()
     if input_directory is None:
-        input_directory = ConfigOptions.output_location
+        input_directory = ConfigOptions().output_location
     stabilization_list = dataset_selection(
         input_directory=input_directory,
         filter_criteria=filter_criteria,
@@ -411,7 +419,7 @@ def calculate_frame_drift(
 def perform_lf_analysis(
         runlist: str,
         calibration_rpu_dataset: str,
-        input_directory,
+        input_directory: str = None,
 ):
     """
 
@@ -425,20 +433,44 @@ def perform_lf_analysis(
     """
     ConfigOptions()
     if input_directory is None:
-        input_directory = ConfigOptions.output_location
+        input_directory = ConfigOptions().output_location
     bound_datasets = runlist_validation_and_parsing(
         input_directory=input_directory,
         runlist_fp=runlist,
         files=False,
     )
     calibration_rpu_dataset_fp = os.path.join(
-        OUT_LOC,
+        input_directory,
         calibration_rpu_dataset,
         'rpu_correlation_value.csv',
     )
     enqueue_lf_analysis(
         input_datasets=bound_datasets,
         calibration_rpu_dataset_fp=calibration_rpu_dataset_fp,
+        runlist_fp=runlist,
+    )
+
+
+@app.command()
+def generate_figures(
+        input_directory: str,
+        figure_type: str = 'longform_analysis',
+):
+    """
+
+    Args:
+        input_directory:
+        figure_type:
+
+    Returns:
+
+    """
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions().output_location
+    enqueue_figure_generation(
+        input_fp=input_directory,
+        figure_type=figure_type,
     )
 
 
@@ -449,7 +481,7 @@ def convert_nd2_to_tiffs(
         output_directory: str = None,
         filter_criteria=None,
         runlist: str = None,
-        force_reconversion: bool = False,
+        force_reconversion: bool = True,
 ):
     """
 
@@ -465,8 +497,8 @@ def convert_nd2_to_tiffs(
     """
     ConfigOptions()
     if input_directory is None:
-        input_directory = ConfigOptions.nd2_location
-        output_directory = ConfigOptions.output_location
+        input_directory = ConfigOptions().nd2_location
+        output_directory = ConfigOptions().output_location
     if type(filter_criteria) == str and filter_criteria in get_color_keys():
         raise RuntimeError(
             'Cannot do channel filtration on dataset prior to generation of a '
@@ -494,8 +526,8 @@ def convert_nd2_to_tiffs(
 
 @app.command()
 def convert_corrupted_nd2_to_tiffs(
-        input_directory: str = '/mnt/core2/microscopy_images/sam_2021',
-        output_directory: str = '/mnt/core1/beholder_output',
+        input_directory: str = None,
+        output_directory: str = None,
         runlist: str = None,
 ):
     """
@@ -509,6 +541,9 @@ def convert_corrupted_nd2_to_tiffs(
     Returns:
 
     """
+    if input_directory is None:
+        input_directory = ConfigOptions().nd2_location
+        output_directory = ConfigOptions().output_location
     conversion_list = runlist_validation_and_parsing(
         input_directory=input_directory,
         runlist_fp=runlist,
@@ -524,8 +559,8 @@ def convert_corrupted_nd2_to_tiffs(
 
 @app.command()
 def s3_sync_upload(
-        input_directory: str = '/mnt/core2/beholder_output',
-        output_bucket: str = 'beholder-output',
+        input_directory: str = None,
+        s3_bucket: str = None,
         results_only: bool = False,
         filter_criteria=None,
         runlist: str = None,
@@ -534,13 +569,16 @@ def s3_sync_upload(
 
     Args:
         input_directory:
-        output_bucket:
+        s3_bucket:
         results_only:
         filter_criteria
 
     Returns:
 
     """
+    if input_directory is None:
+        input_directory = ConfigOptions().nd2_location
+        s3_bucket = ConfigOptions().s3_bucket
     if runlist is None:
         upload_list = dataset_selection(
             input_directory=input_directory,
@@ -552,11 +590,11 @@ def s3_sync_upload(
             runlist_fp=runlist,
             files=False,
         )
-    log.info(f'⬤ Syncing {input_directory} to AWS S3 Bucket {output_bucket}.')
+    log.info(f'⬤ Syncing {input_directory} to AWS S3 Bucket {s3_bucket}.')
     log.info('-' * 88)
     for upload_dir in upload_list:
         upload_suffix = Path(upload_dir).stem
-        cmd = ['aws', 's3', 'sync', '--size-only', f'{upload_dir}', f's3://{output_bucket}/{upload_suffix}']
+        cmd = ['aws', 's3', 'sync', '--size-only', f'{upload_dir}', f's3://{s3_bucket}/{upload_suffix}']
         if results_only:
             cmd.append('--exclude')
             cmd.append('*.tiff')
@@ -568,23 +606,26 @@ def s3_sync_upload(
 
 @app.command()
 def s3_sync_download(
-        output_directory: str = '/mnt/core2/beholder_test',
-        input_bucket: str = 'beholder-output',
+        output_directory: str = None,
+        s3_bucket: str = None,
         results_only: bool = True,
 ):
     """
 
     Args:
         output_directory:
-        input_bucket:
+        s3_bucket:
         results_only:
 
     Returns:
 
     """
-    log.info(f'⬤ Downloading AWS S3 Bucket {input_bucket} to local directory {output_directory}...')
+    if output_directory is None:
+        output_directory = ConfigOptions().output_location
+        s3_bucket = ConfigOptions().s3_bucket
+    log.info(f'⬤ Downloading AWS S3 Bucket {s3_bucket} to local directory {output_directory}...')
     log.info('-' * 88)
-    cmd = ['aws', 's3', 'sync', f's3://{input_bucket}', f'{output_directory}', '--exclude', '*.tiff']
+    cmd = ['aws', 's3', 'sync', f's3://{s3_bucket}', f'{output_directory}', '--exclude', '*.tiff']
     if results_only:
         cmd.append('--exclude')
         cmd.append('*.tiff')
@@ -615,31 +656,63 @@ def beholder(
     with open(runlist, 'r') as input_file:
         runlist_json = json.load(input_file)
         stages = runlist_json['stages']
+        stage_settings = runlist_json['settings']
     for stage in stages:
         log.info(f'Starting Stage: {stage}...')
         if stage == "convert_nd2_to_tiffs":
-            convert_nd2_to_tiffs(
-                input_directory=nd2_directory,
-                output_directory=output_directory,
-                filter_criteria=filter_criteria,
-                runlist=runlist,
-            )
+            if "convert_nd2_to_tiffs" in stage_settings:
+                convert_nd2_to_tiffs(
+                    input_directory=nd2_directory,
+                    output_directory=output_directory,
+                    filter_criteria=filter_criteria,
+                    runlist=runlist,
+                    **stage_settings['convert_nd2_to_tiffs'],
+                )
+            else:
+                convert_nd2_to_tiffs(
+                    input_directory=nd2_directory,
+                    output_directory=output_directory,
+                    filter_criteria=filter_criteria,
+                    runlist=runlist,
+                )
         elif stage == "convert_corrupted_nd2_to_tiffs":
-            convert_corrupted_nd2_to_tiffs(
-                input_directory=nd2_directory,
-                output_directory=output_directory,
-                runlist=runlist,
-            )
+            if "convert_corrupted_nd2_to_tiffs" in stage_settings:
+                convert_corrupted_nd2_to_tiffs(
+                    input_directory=nd2_directory,
+                    output_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings["convert_corrupted_nd2_to_tiffs"]
+                )
+            else:
+                convert_corrupted_nd2_to_tiffs(
+                    input_directory=nd2_directory,
+                    output_directory=output_directory,
+                    runlist=runlist,
+                )
         elif stage == "segmentation":
-            segmentation(
-                input_directory=output_directory,
-                runlist=runlist,
-            )
+            if "segmentation" in stage_settings:
+                segmentation(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings['segmentation']
+                )
+            else:
+                segmentation(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                )
         elif stage == "s3_sync_upload":
-            s3_sync_upload(
-                input_directory=output_directory,
-                runlist=runlist,
-            )
+            if "s3_sync_upload" in stage_settings:
+                s3_sync_upload(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings['s3_sync_upload']
+                )
+            else:
+                s3_sync_upload(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                )
         elif stage == "s3_sync_download":
             s3_sync_download(
                 output_directory=output_directory,

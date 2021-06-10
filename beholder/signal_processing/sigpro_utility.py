@@ -68,7 +68,9 @@ def get_time_stamps_from_xml_metadata(xml_tree: ETree.ElementTree):
                         if ggchild.tag.endswith('Plane'):
                             if 'DeltaT' in ggchild.attrib:
                                 inner_list.append(float(ggchild.attrib['DeltaT']))
-                    master_list.append(sorted(set(inner_list)))
+                    inner_list = set(inner_list)
+                    inner_list = sorted(inner_list)
+                    master_list.append(inner_list)
     return master_list
 
 def get_channel_name_from_wavelength(wavelength_nm: float):
