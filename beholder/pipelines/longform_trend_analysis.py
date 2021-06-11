@@ -34,7 +34,7 @@ def enqueue_lf_analysis(
 ):
     rpu_df = pd.read_csv(calibration_rpu_dataset_fp)
     med_value = rpu_df['fl_median_value'][0]
-    df = pd.DataFrame(columns=['time_start', 'time_stop', 'YFP_fluorescence'])
+    df = pd.DataFrame(columns=['timestamps', 'YFP_fluorescence', 'source_dataset'])
     offset_datetime = 0
     for index, dataset_fp in enumerate(input_datasets):
         segmentation_res_root = os.path.join(dataset_fp, 'segmentation_output')
@@ -44,11 +44,7 @@ def enqueue_lf_analysis(
             if os.path.isdir(res):
                 clean_results.append(res)
         clean_results = sorted(clean_results, key=lambda x: int(Path(x).stem))
-        time_start = float('inf')
-        time_stop = float('-inf')
         # TODO: BAD FORM. DO FIX.
-        rolling_sum = 0
-        total_res = 0
         for res in tqdm.tqdm(clean_results):
             res_number = Path(res).stem
             stats_file = f'{res_number}_summary_statistics.csv'
@@ -56,38 +52,16 @@ def enqueue_lf_analysis(
             df1 = pd.read_csv(stats_path)
             if df1.empty:
                 continue
-            total_res += 1
-            # Perform a correction on overall fluorescence as determined by
-            # our median RPU.
-            l_time_start = df1['timestamps'].iloc[0]
-            l_time_stop = df1['timestamps'].iloc[-1]
-            if l_time_start < time_start:
-                time_start = l_time_start
-            if l_time_stop > time_stop:
-                time_stop = l_time_stop
-            signal_df = df1.loc[:, df1.columns.str.endswith('_fluorescence')]
-            # THE CORRECTION
             df1['YFP_fluorescence'] = df1['YFP_fluorescence'] / med_value
-            rolling_sum += df1['YFP_fluorescence'].mean()
-            total_res += 1
-        if not total_res:
-            continue
-        median_fl = rolling_sum / total_res
-        dt = {
-            'time_start': [time_start + offset_datetime],
-            'time_stop': [time_stop + offset_datetime],
-            'YFP_fluorescence': [median_fl],
-        }
-        df2 = pd.DataFrame.from_dict(dt)
-        df = df.append(df2)
-        offset_datetime = time_stop
+            df1['timestamps'] = df1['timestamps'].astype('int') + offset_datetime
+            df1['source_dataset'] = Path(dataset_fp).stem
+            df = df.append(df1[['YFP_fluorescence', 'timestamps', 'source_dataset']])
+            offset_datetime = df1['timestamps'].iloc[-1]
     tl_dir = Path(input_datasets[0]).parent.absolute()
-    print(1)
     runtime = datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
     output_path = os.path.join(tl_dir, 'analysis_results', f'{runtime}_results')
     if not os.path.exists(output_path):
         os.makedirs(output_path)
-    print(2)
     result_path = os.path.join(
         output_path,
         'longform_trend_analysis.csv'
@@ -95,3 +69,74 @@ def enqueue_lf_analysis(
     shutil.copy(runlist_fp, output_path)
     LOG.info(f'Results available at {result_path}')
     df.to_csv(result_path)
+
+
+
+
+# def enqueue_lf_analysis(
+#         input_datasets: List[str],
+#         calibration_rpu_dataset_fp: str,
+#         runlist_fp: str,
+# ):
+#     rpu_df = pd.read_csv(calibration_rpu_dataset_fp)
+#     med_value = rpu_df['fl_median_value'][0]
+#     df = pd.DataFrame(columns=['time_start', 'time_stop', 'YFP_fluorescence'])
+#     offset_datetime = 0
+#     for index, dataset_fp in enumerate(input_datasets):
+#         segmentation_res_root = os.path.join(dataset_fp, 'segmentation_output')
+#         result_folders = glob.glob(f'{segmentation_res_root}/*')
+#         clean_results = []
+#         for res in result_folders:
+#             if os.path.isdir(res):
+#                 clean_results.append(res)
+#         clean_results = sorted(clean_results, key=lambda x: int(Path(x).stem))
+#         time_start = float('inf')
+#         time_stop = float('-inf')
+#         # TODO: BAD FORM. DO FIX.
+#         rolling_sum = 0
+#         total_res = 0
+#         for res in tqdm.tqdm(clean_results):
+#             res_number = Path(res).stem
+#             stats_file = f'{res_number}_summary_statistics.csv'
+#             stats_path = os.path.join(res, stats_file)
+#             df1 = pd.read_csv(stats_path)
+#             if df1.empty:
+#                 continue
+#             total_res += 1
+#             # Perform a correction on overall fluorescence as determined by
+#             # our median RPU.
+#             l_time_start = df1['timestamps'].iloc[0]
+#             l_time_stop = df1['timestamps'].iloc[-1]
+#             if l_time_start < time_start:
+#                 time_start = l_time_start
+#             if l_time_stop > time_stop:
+#                 time_stop = l_time_stop
+#             # THE CORRECTION
+#             df1['YFP_fluorescence'] = df1['YFP_fluorescence'] / med_value
+#             rolling_sum += df1['YFP_fluorescence'].mean()
+#             total_res += 1
+#         if not total_res:
+#             continue
+#         median_fl = rolling_sum / total_res
+#         dt = {
+#             'time_start': [time_start + offset_datetime],
+#             'time_stop': [time_stop + offset_datetime],
+#             'YFP_fluorescence': [median_fl],
+#         }
+#         df2 = pd.DataFrame.from_dict(dt)
+#         df = df.append(df2)
+#         offset_datetime = time_stop
+#     tl_dir = Path(input_datasets[0]).parent.absolute()
+#     print(1)
+#     runtime = datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+#     output_path = os.path.join(tl_dir, 'analysis_results', f'{runtime}_results')
+#     if not os.path.exists(output_path):
+#         os.makedirs(output_path)
+#     print(2)
+#     result_path = os.path.join(
+#         output_path,
+#         'longform_trend_analysis.csv'
+#     )
+#     shutil.copy(runlist_fp, output_path)
+#     LOG.info(f'Results available at {result_path}')
+#     df.to_csv(result_path)
