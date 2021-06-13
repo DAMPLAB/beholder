@@ -11,6 +11,7 @@ import datetime
 import glob
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import (
     List,
@@ -22,6 +23,7 @@ import tqdm
 from beholder.utils import (
     BLogger,
 )
+from datetime import datetime
 
 LOG = BLogger()
 from sklearn.preprocessing import scale
@@ -35,7 +37,6 @@ def enqueue_lf_analysis(
     rpu_df = pd.read_csv(calibration_rpu_dataset_fp)
     med_value = rpu_df['fl_median_value'][0]
     df = pd.DataFrame(columns=['timestamps', 'YFP_fluorescence', 'source_dataset'])
-    offset_datetime = 0
     for index, dataset_fp in enumerate(input_datasets):
         segmentation_res_root = os.path.join(dataset_fp, 'segmentation_output')
         result_folders = glob.glob(f'{segmentation_res_root}/*')
@@ -53,23 +54,35 @@ def enqueue_lf_analysis(
             if df1.empty:
                 continue
             df1['YFP_fluorescence'] = df1['YFP_fluorescence'] / med_value
-            df1['timestamps'] = df1['timestamps'].astype('int') + offset_datetime
+            df1['timestamps'] = df1['timestamps'].astype('int')
             df1['source_dataset'] = Path(dataset_fp).stem
             df = df.append(df1[['YFP_fluorescence', 'timestamps', 'source_dataset']])
-            offset_datetime = df1['timestamps'].iloc[-1]
+    df['datetime'] = pd.to_datetime(df['timestamps'], unit='s')
+    gb = df.groupby(pd.Grouper(key='datetime', freq='15min'))['YFP_fluorescence']
+    mean_fl_by_time = gb.agg('mean')
+    group_size = gb.size()
+    epoch = datetime.utcfromtimestamp(0)
+    df3 = pd.DataFrame()
+    df3['datetime'] = (mean_fl_by_time.index.to_pydatetime() - epoch)
+    df3['YFP_fluorescence'] = mean_fl_by_time.values
+    df3['group_size'] = group_size.values
     tl_dir = Path(input_datasets[0]).parent.absolute()
-    runtime = datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+    runtime = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
     output_path = os.path.join(tl_dir, 'analysis_results', f'{runtime}_results')
     if not os.path.exists(output_path):
         os.makedirs(output_path)
     result_path = os.path.join(
+        output_path,
+        'old_longform_trend_analysis.csv'
+    )
+    new_result_path = os.path.join(
         output_path,
         'longform_trend_analysis.csv'
     )
     shutil.copy(runlist_fp, output_path)
     LOG.info(f'Results available at {result_path}')
     df.to_csv(result_path)
-
+    df3.to_csv(new_result_path)
 
 
 
