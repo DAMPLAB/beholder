@@ -12,20 +12,7 @@
     "3-SR_1_5_6hPre-C_PlainM9_TS_MC8",
     "3-SR_1_5_6hPre-C_PlainM9_TS_MC9",
     "3-SR_1_5_6hPre-C_PlainM9_TS_MC10",
-    "3-SR_1_5_6hPre-C_PlainM9_TS_MC11",
-    "1-SR_1_9_6hPre-C_aTc_TS_MC1",
-    "2-SR_1_9_6hPre-C_1mM_IPTG_TS_MC1",
-    "2-SR_1_9_6hPre-C_1mM_IPTG_TS_MC2",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC1",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC2",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC3",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC4",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC5",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC6",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC7",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC8",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC9",
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC10"
+    "3-SR_1_5_6hPre-C_PlainM9_TS_MC11"
   ],
   "num_observations": [
   ],
@@ -37,5 +24,7 @@
       "do_segment": false,
       "do_defocus": false
     }
-  }
+  },
+  "run_name": "1_5_for_lauren_paper",
+  "replicate": 1
 }
