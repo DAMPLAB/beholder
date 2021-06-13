@@ -308,6 +308,38 @@ def runlist_validation_and_parsing(
         return input_directories
 
 
+def runlist_check(
+        input_directory: str,
+        runlist_fp: str = "example_runlist.json",
+        files: bool = True,
+) -> bool:
+    """
+
+    Args:
+        input_directory
+        runlist_fp
+        files:
+
+    Returns:
+
+    """
+    if not os.path.isfile(runlist_fp):
+        raise RuntimeError('Unable to locate input runlist, please investigate.')
+    with open(runlist_fp, 'r') as input_file:
+        runlist = json.load(input_file)
+        input_directories = runlist['input_datasets']
+        if files:
+            input_directories = [i + ".nd2" for i in input_directories]
+        input_directories = [os.path.join(input_directory, i) for i in input_directories]
+        removal_list = []
+        for i in input_directories:
+            if not os.path.isfile(i) and not os.path.isdir(i):
+                log.warning(f'Missing the following dataset: {i}')
+                removal_list.append(i)
+        if removal_list:
+            return False
+        return True
+
 # -------------------------- Date Generation Commands --------------------------
 @app.command()
 def check_panel_detection(
@@ -717,9 +749,62 @@ def beholder(
             s3_sync_download(
                 output_directory=output_directory,
             )
+        elif stage == 'run_lf_analysis':
+
         else:
             log.warning(f'Stage {stage} not recognized as valid pipeline stage.')
         log.info(f'Finishing Stage: {stage}...')
+
+@app.command()
+def batchholder(
+        bachlist_fp: str,
+        nd2_directory: str = None,
+):
+    """
+
+    Args:
+        bachlist_fp:
+        nd2_directory:
+        output_directory:
+        filter_criteria:
+
+    Returns:
+
+    """
+    # We just the pipeline in it's entirety, piping the arguments throughout
+    # the entirety of the program.
+    ConfigOptions()
+    if nd2_directory is None:
+        nd2_directory = ConfigOptions().nd2_location
+        output_directory = ConfigOptions().output_location
+    log.info('Batchholder START.')
+    if not os.path.isfile(bachlist_fp):
+        raise RuntimeError(f'Cannot find batch runlist at {bachlist_fp}')
+    # Extract our stages.
+    with open(bachlist_fp, 'r') as input_file:
+        batch_list = json.load(input_file)
+        runlist_abs_path = batch_list['absolute_path']
+        runlists = batch_list['runlists']
+    runlist_filepaths = map(lambda x: os.path.join(runlist_abs_path, x), runlists)
+    # We assume that we're doing the ND2 conversion here. I'll remove this at
+    # a later date if we stick with the longform batch model.
+    for runlist in runlist_filepaths:
+        if not os.path.exists(runlist):
+            raise RuntimeError(f'Cannot find {runlist}. Please investigate.')
+        # Then we want to make sure that all of our datasets exist where we say
+        # they should be, because I'm not constantly dicking with this.
+        if not runlist_check(
+            input_directory=nd2_directory,
+            runlist_fp=runlist,
+            files=True,
+        ):
+            raise RuntimeError(
+                f'Unable to find datasets for {runlist}. Please investigate.'
+            )
+    for runlist in runlist_filepaths:
+        beholder(runlist=runlist)
+
+
 
 
 if __name__ == "__main__":
