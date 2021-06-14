@@ -750,7 +750,17 @@ def beholder(
                 output_directory=output_directory,
             )
         elif stage == 'run_lf_analysis':
-
+            if "run_lf_analysis" in stage_settings:
+                perform_lf_analysis(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings['run_lf_analysis']
+                )
+            else:
+                perform_lf_analysis(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                )
         else:
             log.warning(f'Stage {stage} not recognized as valid pipeline stage.')
         log.info(f'Finishing Stage: {stage}...')
@@ -785,11 +795,12 @@ def batchholder(
         batch_list = json.load(input_file)
         runlist_abs_path = batch_list['absolute_path']
         runlists = batch_list['runlists']
-    runlist_filepaths = map(lambda x: os.path.join(runlist_abs_path, x), runlists)
+    runlist_filepaths = list(map(lambda x: os.path.join(runlist_abs_path, f'{x}.json'), runlists))
     # We assume that we're doing the ND2 conversion here. I'll remove this at
     # a later date if we stick with the longform batch model.
+    log.info(2)
     for runlist in runlist_filepaths:
-        if not os.path.exists(runlist):
+        if not os.path.isfile(runlist):
             raise RuntimeError(f'Cannot find {runlist}. Please investigate.')
         # Then we want to make sure that all of our datasets exist where we say
         # they should be, because I'm not constantly dicking with this.
@@ -801,7 +812,9 @@ def batchholder(
             raise RuntimeError(
                 f'Unable to find datasets for {runlist}. Please investigate.'
             )
-    for runlist in runlist_filepaths:
+    log.info(3)
+    for runlist in list(runlist_filepaths):
+        print('Hello')
         beholder(runlist=runlist)
 
 
