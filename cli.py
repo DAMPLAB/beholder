@@ -798,7 +798,6 @@ def batchholder(
     runlist_filepaths = list(map(lambda x: os.path.join(runlist_abs_path, f'{x}.json'), runlists))
     # We assume that we're doing the ND2 conversion here. I'll remove this at
     # a later date if we stick with the longform batch model.
-    log.info(2)
     for runlist in runlist_filepaths:
         if not os.path.isfile(runlist):
             raise RuntimeError(f'Cannot find {runlist}. Please investigate.')
@@ -812,7 +811,6 @@ def batchholder(
             raise RuntimeError(
                 f'Unable to find datasets for {runlist}. Please investigate.'
             )
-    log.info(3)
     for runlist in list(runlist_filepaths):
         print('Hello')
         beholder(runlist=runlist)

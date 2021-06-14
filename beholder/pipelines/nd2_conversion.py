@@ -19,7 +19,7 @@ from beholder.signal_processing.sigpro_utility import (
 from beholder.utils import (
     BLogger,
 )
-
+import time
 log = BLogger()
 
 
@@ -62,7 +62,13 @@ def enqueue_nd2_conversion(
             'Failed to import bioformats and javabridge. '
             'Please check installation.'
         )
-    javabridge.start_vm(class_path=bf.JARS)
+    try:
+        javabridge.start_vm(class_path=bf.JARS)
+    except RuntimeError:
+        log.warning('Failed to start Java VM, attempting a kill and sleep to compensate.')
+        javabridge.kill_vm()
+        time.sleep(5)
+        javabridge.start_vm(class_path=bf.JARS)
     root_logger_name = javabridge.get_static_field(
         "org/slf4j/Logger",
         "ROOT_LOGGER_NAME",
