@@ -29,6 +29,8 @@ from .signal_transform import (
     cellular_highpass_filter,
     combine_frame,
     debug_image,
+    modify_contrast,
+    jump_color,
 )
 
 from .stats import (

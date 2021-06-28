@@ -1,3 +1,4 @@
+import datetime
 import multiprocessing as mp
 import os
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ class ConfigOptions(metaclass=SingletonBaseClass):
     nd2_location: str = None
     output_location: str = None
     s3_bucket: str = None
+
+    analysis_location: str = None
 
     def __post_init__(self):
         if self.color_lut is None:
@@ -79,6 +82,36 @@ def get_nd2_file_location() -> str:
 
 def get_output_file_location() -> str:
     return ConfigOptions().output_location
+
+def get_analysis_location(runlist_fp: str = None) -> str:
+    if ConfigOptions().analysis_location is None:
+        tl_dir = get_output_file_location()
+        runtime = datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+        if runlist_fp is None:
+            with open(runlist_fp, 'r') as input_runlist:
+                runlist_dict = json.load(input_runlist)
+                run_name = runlist_dict['run_name']
+                replicate_number = runlist_dict['replicate']
+                output_path = os.path.join(
+                    tl_dir,
+                    'analysis_results',
+                    f'{run_name}_{replicate_number}_{runtime}',
+                )
+        else:
+            output_path = os.path.join(
+                tl_dir,
+                'analysis_results',
+                f'generic_run_0_{runtime}',
+            )
+        if not os.path.isdir(output_path):
+            os.makedirs(output_path)
+        ConfigOptions().analysis_location = output_path
+        return ConfigOptions().analysis_location
+    else:
+        return ConfigOptions().analysis_location
+
+
+
 
 
 def beholder_text(input_text: str, color: str = '#49306B'):

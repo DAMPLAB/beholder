@@ -16,5 +16,7 @@ from .config import (
     get_max_processes,
     beholder_text,
     get_color_keys,
+    get_analysis_location,
+    convert_channel_name_to_color
 )
 from .logging import BLogger
