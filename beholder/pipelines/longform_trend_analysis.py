@@ -37,18 +37,24 @@ def enqueue_lf_analysis(
     rpu_df = pd.read_csv(calibration_rpu_dataset_fp)
     med_value = rpu_df['fl_median_value'][0]
     max_value = rpu_df['fl_max_value'][0]
-    primary_df = pd.DataFrame(
+    min_value = rpu_df['fl_min_value'][0]
+    master_df = pd.DataFrame(
         columns=[
-            'timestamps',
+            'datetime',
             'normalized_yfp_fluorescence',
+            'normalized_yfp_window_10',
             'max_normalized_yfp_fluorescence',
-            'source_dataset',
+            'max_normalized_yfp_window_10',
+            'group_size',
         ]
     )
+    current_end_time = 0
+    internal_stats_list = []
     for index, dataset_fp in enumerate(input_datasets):
         segmentation_res_root = os.path.join(dataset_fp, 'segmentation_output')
         result_folders = glob.glob(f'{segmentation_res_root}/*')
         clean_results = []
+        dataset_df = pd.DataFrame()
         for res in result_folders:
             if os.path.isdir(res):
                 clean_results.append(res)
@@ -57,15 +63,16 @@ def enqueue_lf_analysis(
             res_number = Path(res).stem
             stats_file = f'{res_number}_summary_statistics.csv'
             stats_path = os.path.join(res, stats_file)
-            df1 = pd.read_csv(stats_path)
-            if df1.empty:
+            internal_stats_df = pd.read_csv(stats_path)
+            if internal_stats_df.empty:
                 continue
-            df1['normalized_yfp_fluorescence'] = df1['YFP_fluorescence'] / med_value
-            df1['max_normalized_yfp_fluorescence'] = df1['YFP_fluorescence'] / max_value
-            df1['timestamps'] = df1['timestamps'].astype('int')
-            df1['source_dataset'] = Path(dataset_fp).stem
-            primary_df = primary_df.append(
-                df1[
+            # TODO: Change the Mean to the Minimum of the Frame.
+            internal_stats_df['normalized_yfp_fluorescence'] = internal_stats_df['YFP_fluorescence'] / med_value
+            internal_stats_df['max_normalized_yfp_fluorescence'] = internal_stats_df['YFP_fluorescence'] / max_value
+            internal_stats_df['timestamps'] = internal_stats_df['timestamps'].astype('int')
+            internal_stats_df['source_dataset'] = Path(dataset_fp).stem
+            dataset_df = dataset_df.append(
+                internal_stats_df[
                     [
                         'timestamps',
                         'normalized_yfp_fluorescence',
@@ -74,26 +81,44 @@ def enqueue_lf_analysis(
                     ]
                 ]
             )
-    # Below line removes outliers. Should propagate to all other fields of interest.
-    primary_df = primary_df[(np.abs(stats.zscore(primary_df['normalized_yfp_fluorescence'])) < 3)]
-    primary_df['datetime'] = pd.to_datetime(primary_df['timestamps'], unit='s')
-    median_groupby = primary_df.groupby(
-        pd.Grouper(key='datetime', freq='15min')
-    )['normalized_yfp_fluorescence']
-    maximum_groupby = primary_df.groupby(
-        pd.Grouper(key='datetime', freq='15min')
-    )['max_normalized_yfp_fluorescence']
-    mean_fl_by_time = median_groupby.agg('mean')
-    mean_max_fl_by_time = maximum_groupby.agg('mean')
-    group_size = median_groupby.size()
-    epoch = datetime.utcfromtimestamp(0)
-    sum_stats_df = pd.DataFrame()
-    sum_stats_df['datetime'] = (mean_fl_by_time.index.to_pydatetime() - epoch)
-    sum_stats_df['normalized_yfp_fluorescence'] = mean_fl_by_time.values
-    sum_stats_df['normalized_yfp_window_10'] = sum_stats_df['normalized_yfp_fluorescence'].rolling(10, min_periods=1).median()
-    sum_stats_df['max_normalized_yfp_fluorescence'] = mean_max_fl_by_time.values
-    sum_stats_df['max_normalized_yfp_window_10'] = sum_stats_df['max_normalized_yfp_fluorescence'].rolling(10, min_periods=1).median()
-    sum_stats_df['group_size'] = group_size.values
+        # Below line removes outliers. Should propagate to all other fields of interest.
+        dataset_df = dataset_df[(np.abs(stats.zscore(dataset_df['normalized_yfp_fluorescence'])) < 3)]
+        # Convert timestamps to something we can do math on.
+        dataset_df['datetime'] = pd.to_datetime(dataset_df['timestamps'], unit='s')
+        if current_end_time:
+            dataset_df['datetime'] = dataset_df['datetime'] + current_end_time
+        median_groupby = dataset_df.groupby(
+            pd.Grouper(key='datetime', freq='15min')
+        )['normalized_yfp_fluorescence']
+        maximum_groupby = dataset_df.groupby(
+            pd.Grouper(key='datetime', freq='15min')
+        )['max_normalized_yfp_fluorescence']
+        mean_fl_by_time = median_groupby.agg('mean')
+        mean_max_fl_by_time = maximum_groupby.agg('mean')
+        group_size = median_groupby.size()
+        epoch = datetime.utcfromtimestamp(0)
+        sum_stats_df = pd.DataFrame()
+        sum_stats_df['datetime'] = (mean_fl_by_time.index.to_pydatetime() - epoch)
+        sum_stats_df['normalized_yfp_fluorescence'] = mean_fl_by_time.values
+        sum_stats_df['normalized_yfp_window_10'] = sum_stats_df['normalized_yfp_fluorescence'].rolling(10, min_periods=1).median()
+        sum_stats_df['max_normalized_yfp_fluorescence'] = mean_max_fl_by_time.values
+        sum_stats_df['max_normalized_yfp_window_10'] = sum_stats_df['max_normalized_yfp_fluorescence'].rolling(10, min_periods=1).median()
+        sum_stats_df['group_size'] = group_size.values
+        # sum_stats_df['source_dataset'] = dataset_df['source_dataset'].values
+        current_end_time = sum_stats_df['datetime'].iloc[-1]
+        master_df = master_df.append(
+            sum_stats_df[
+                [
+                    'datetime',
+                    'normalized_yfp_fluorescence',
+                    'normalized_yfp_window_10',
+                    'max_normalized_yfp_fluorescence',
+                    'max_normalized_yfp_window_10',
+                    'group_size',
+                ]
+            ]
+        )
+        internal_stats_list.append([Path(dataset_fp).stem, dataset_df])
     tl_dir = Path(input_datasets[0]).parent.absolute()
     runtime = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
     with open(runlist_fp, 'r') as input_runlist:
@@ -110,11 +135,12 @@ def enqueue_lf_analysis(
         output_path,
         'raw_trend_analysis.csv'
     )
-    new_result_path = os.path.join(
-        output_path,
-        'longform_trend_analysis.csv'
-    )
     shutil.copy(runlist_fp, output_path)
     LOG.info(f'Results available at {result_path}')
-    primary_df.to_csv(result_path)
-    sum_stats_df.to_csv(new_result_path)
+    master_df.to_csv(result_path)
+    for dataset_name, i_df in internal_stats_list:
+        out_fp = os.path.join(
+            output_path,
+            f'{dataset_name}_longform_trend_analysis.csv'
+        )
+        i_df.to_csv(out_fp)

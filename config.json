@@ -1,4 +1,6 @@
 {
-  "nd2_location": "/mnt/core2/microscopy_images/sam_2021",
-  "output_location": "/mnt/core1/beholder_output/"
+  "nd2_location": "/mnt/core1/3-Microscope_Images/Batch1",
+  "output_location": "/mnt/core2/beholder_output/"
 }
+
+

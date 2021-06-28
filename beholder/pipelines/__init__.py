@@ -33,3 +33,7 @@ from .longform_trend_analysis import (
 from .generate_figures import (
     enqueue_figure_generation,
 )
+
+from .autofluoresence_conversion import (
+    enqueue_autofluorescence_calculation,
+)

@@ -21,7 +21,7 @@ from beholder.utils import (
 )
 import time
 log = BLogger()
-
+JAVA_FLAG = False
 
 # --------------------------- UTILITY FUNCTIONALITY ----------------------------
 def parse_xml_metadata(xml_string, array_order='tyxc'):
@@ -62,13 +62,7 @@ def enqueue_nd2_conversion(
             'Failed to import bioformats and javabridge. '
             'Please check installation.'
         )
-    try:
-        javabridge.start_vm(class_path=bf.JARS)
-    except RuntimeError:
-        log.warning('Failed to start Java VM, attempting a kill and sleep to compensate.')
-        javabridge.kill_vm()
-        time.sleep(5)
-        javabridge.start_vm(class_path=bf.JARS)
+    javabridge.start_vm(class_path=bf.JARS)
     root_logger_name = javabridge.get_static_field(
         "org/slf4j/Logger",
         "ROOT_LOGGER_NAME",
@@ -182,7 +176,7 @@ def enqueue_nd2_conversion(
             out_file.write(metadata)
         log.debug(f'Frame write information being saved to {write_save_path}')
         np.save(file=write_save_path, arr=frame_writes)
-    javabridge.kill_vm()
+    # javabridge.kill_vm()
 
 
 # ---------------------------- FALLBACK CONVERSION ----------------------------
@@ -341,7 +335,10 @@ def enqueue_brute_force_conversion(
             'Failed to import bioformats and javabridge. '
             'Please check installation.'
         )
-    javabridge.start_vm(class_path=bf.JARS)
+    global JAVA_FLAG
+    if not JAVA_FLAG:
+        javabridge.start_vm(class_path=bf.JARS)
+        JAVA_FLAG = True
     root_logger_name = javabridge.get_static_field(
         "org/slf4j/Logger",
         "ROOT_LOGGER_NAME",
@@ -422,5 +419,5 @@ def enqueue_brute_force_conversion(
         with open(metadata_save_path, 'w') as out_file:
             corrected_metadata = metadata_correction(metadata)
             out_file.write(corrected_metadata)
-    javabridge.kill_vm()
+    # javabridge.kill_vm()
 
