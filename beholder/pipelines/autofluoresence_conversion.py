@@ -31,8 +31,6 @@ def enqueue_autofluorescence_calculation(input_fp: str):
         'fl_max_value': df['YFP_fluorescence'].max(),
         'std_dev_median_value': df['YFP_std_dev'].median(),
         'std_dev_mean_value': df['YFP_std_dev'].mean(),
-        'cell_count_median_value': df['YFP_cell_count'].median(),
-        'cell_count_mean_value': df['YFP_cell_count'].mean(),
     }
     write_df = pd.DataFrame([out_dict])
     super_summation_path = os.path.join(input_fp, 'autofluorescence_correlation_value.csv')

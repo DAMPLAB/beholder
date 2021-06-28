@@ -27,6 +27,7 @@ from beholder.signal_processing import (
     combine_frame,
     modify_contrast,
     jump_color,
+    debug_image,
 )
 from beholder.signal_processing.sigpro_utility import (
     get_channel_and_wl_data_from_xml_metadata,
@@ -110,6 +111,10 @@ def enqueue_panel_based_gif_generation(
         # or ndarray of each of the little slices after we do channel based
         # compositing.
         master_lst = []
+        total_frames = 0
+        master_tracker = 0
+        for tiff in tiff_list:
+            total_frames += tiff[0].shape[0]
         for tiff in tiff_list:
             frame_tracker = 1
             primary_channel = tiff[0]
@@ -117,7 +122,6 @@ def enqueue_panel_based_gif_generation(
             # I don't think I need to downsample because all I need are the
             # resultant images.
             # I think this is kosher due to the loss in dimensionality.
-            inner_list = []
             for frame_index in range(primary_channel.shape[0]):
                 base_frame = primary_channel[frame_index]
                 base_frame = colorize_frame(base_frame, color='grey')
@@ -136,7 +140,7 @@ def enqueue_panel_based_gif_generation(
                     # base_frame = np.uint8(base_frame)
                     color_frame = colorize_frame(color_frame, color_name)
                     # color_frame = modify_contrast(color_frame)
-                    color_frame = jump_color(color_frame, color_name, 3)
+                    color_frame = jump_color(color_frame, color_name, 5)
                     # color_frame = increase_brightness(color_frame)
                     base_frame = cv2.addWeighted(
                         base_frame,
@@ -147,32 +151,27 @@ def enqueue_panel_based_gif_generation(
                     )
                     base_frame = combine_frame(base_frame, color_frame)
                 frame_tracker += 1
+                master_tracker += 1
                 write_frame = np.zeros(
                     (
                         base_frame.shape[0],
                         base_frame.shape[1],
                         3
                     ),
-                    dtype=np.uint16)
-                x_pos = int((base_frame.shape[0] - 2000))
-                y_pos = int((base_frame.shape[1] - 2000))
-                cv2.putText(
-                    write_frame,
-                    f'Frame: {frame_tracker}',
-                    (int(write_frame.shape[0]/2), int(write_frame.shape[1]/2)),
-                    cv2.FONT_HERSHEY_PLAIN,
-                    1,
-                    [0, 0, 0],
+                    dtype=np.uint16
+                )
+                write_frame[:] = (65535, 65535, 65535)
+                base_frame = cv2.putText(
+                    base_frame,
+                    f'{master_tracker} / {total_frames}',
+                    (1250, 1000),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    .75,
+                    (65535, 65535, 65535),
                     2,
                     cv2.LINE_AA,
                 )
-                base_frame = cv2.addWeighted(
-                    base_frame,
-                    1,
-                    write_frame,
-                    1.5,
-                    0,
-                )
+                # debug_image(base_frame, 'Test')
                 master_lst.append(base_frame)
         gif_fp = os.path.join(
             final_dest,

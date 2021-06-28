@@ -30,16 +30,14 @@ def enqueue_rpu_calculation(
         df = pd.concat([df, stat_df])
     # We then calculate the median value of all of the concatened dudes
     out_dict = {
-        'fl_median_value': df['YFP_fluorescence'].median() - correction_df['YFP_fluorescence'].median(),
-        'fl_mean_value': df['YFP_fluorescence'].mean() - correction_df['YFP_fluorescence'].mean(),
-        'fl_min_value': df['YFP_fluorescence'].min() - correction_df['YFP_fluorescence'].min(),
-        'fl_max_value': df['YFP_fluorescence'].max() - correction_df['YFP_fluorescence'].max(),
-        'std_dev_median_value': df['YFP_std_dev'].median() - correction_df['YFP_std_dev'].median(),
-        'std_dev_mean_value': df['YFP_std_dev'].mean() - correction_df['YFP_std_dev'].mean(),
-        'cell_count_median_value': df['YFP_cell_count'].median() - correction_df['YFP_cell_count'].median(),
-        'cell_count_mean_value': df['YFP_cell_count'].mean() - correction_df['YFP_cell_count'].mean(),
+        'fl_median_value': df['YFP_fluorescence'].median() - correction_df['fl_median_value'],
+        'fl_mean_value': df['YFP_fluorescence'].mean() - correction_df['fl_mean_value'],
+        'fl_min_value': df['YFP_fluorescence'].min() - correction_df['fl_min_value'],
+        'fl_max_value': df['YFP_fluorescence'].max() - correction_df['fl_max_value'],
+        'std_dev_median_value': df['YFP_std_dev'].median() - correction_df['std_dev_median_value'],
+        'std_dev_mean_value': df['YFP_std_dev'].mean() - correction_df['std_dev_mean_value'],
     }
-    write_df = pd.DataFrame([out_dict])
+    write_df = pd.DataFrame(out_dict)
     super_summation_path = os.path.join(rpu_input_fp, 'rpu_correlation_value.csv')
     write_df.to_csv(super_summation_path)
     LOG.info(f'Output data available at {super_summation_path}')

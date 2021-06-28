@@ -398,7 +398,15 @@ def jump_color(
         input_frame: np.ndarray,
         color_name: str,
         value: int,
+        threshold_pct: float = 1.0,
 ):
+    if input_frame.dtype == np.uint16:
+        threshold_abs = 65536 * (threshold_pct/100)
+    elif input_frame.dtype == np.uint8:
+        threshold_abs = 256 * (threshold_pct/100)
+    else:
+        raise RuntimeError(f'Jump color only supported for 8 bit or 16 bit operations.')
+    input_frame[input_frame <= threshold_abs] = 0
     if color_name == 'red':
         input_frame[:, :, 0] *= value
     if color_name == 'yellow':
@@ -407,7 +415,6 @@ def jump_color(
         input_frame[:, :, 1] *= value
     if color_name == 'blue':
         input_frame[:, :, 2] *= value
-
     return input_frame
 
 def histogram_equalization(input_frame: np.ndarray):
@@ -613,8 +620,10 @@ def crop_from_points(
 
 def debug_image(
         file: Union[str, np.ndarray],
-        display_title: str,
+        display_title: str = None,
 ):
+    if display_title is None:
+        display_title = 'Check Frame.'
     img = None
     if type(file) == str:
         img = cv2.imread(file, 0)

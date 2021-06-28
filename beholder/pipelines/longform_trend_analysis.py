@@ -32,9 +32,22 @@ LOG = BLogger()
 def enqueue_lf_analysis(
         input_datasets: List[str],
         calibration_rpu_dataset_fp: str,
+        calibration_autofluoresence_dataset_fp: str,
         runlist_fp: str,
 ):
+    """
+
+    Args:
+        input_datasets:
+        calibration_rpu_dataset_fp:
+        calibration_autofluoresence_dataset_fp:
+        runlist_fp:
+
+    Returns:
+
+    """
     rpu_df = pd.read_csv(calibration_rpu_dataset_fp)
+    af_df = pd.read_csv(calibration_autofluoresence_dataset_fp)
     med_value = rpu_df['fl_median_value'][0]
     max_value = rpu_df['fl_max_value'][0]
     min_value = rpu_df['fl_min_value'][0]
@@ -66,9 +79,16 @@ def enqueue_lf_analysis(
             internal_stats_df = pd.read_csv(stats_path)
             if internal_stats_df.empty:
                 continue
-            # TODO: Change the Mean to the Minimum of the Frame.
-            internal_stats_df['normalized_yfp_fluorescence'] = internal_stats_df['YFP_fluorescence'] / med_value
-            internal_stats_df['max_normalized_yfp_fluorescence'] = internal_stats_df['YFP_fluorescence'] / max_value
+            internal_stats_df['normalized_yfp_fluorescence'] = \
+                (internal_stats_df['YFP_fluorescence'] - af_df['fl_median_value']) / med_value
+            internal_stats_df['max_normalized_yfp_fluorescence'] = \
+                (internal_stats_df['YFP_fluorescence'] - af_df['fl_max_value']) / max_value
+            internal_stats_df['min_normalized_yfp_fluorescence'] = \
+                (internal_stats_df['YFP_fluorescence'] - af_df['fl_min_value']) / max_value
+            internal_stats_df['min_normalized_yfp_fluorescence'] = \
+                (internal_stats_df['YFP_fluorescence'] - af_df['fl_min_value']) / max_value
+            internal_stats_df['min_normalized_yfp_fluorescence'] = \
+                (internal_stats_df['YFP_fluorescence'] - af_df['fl_min_value']) / max_value
             internal_stats_df['timestamps'] = internal_stats_df['timestamps'].astype('int')
             internal_stats_df['source_dataset'] = Path(dataset_fp).stem
             dataset_df = dataset_df.append(
