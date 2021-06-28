@@ -309,6 +309,25 @@ def runlist_validation_and_parsing(
             input_directories.remove(bad_dir)
         return input_directories
 
+def fp_expansion(
+        input_directory: str,
+        filename: str,
+) -> str:
+    """
+
+    Args:
+        input_directory:
+        filename:
+
+    Returns:
+
+    """
+    out_fp = os.path.join(input_directory, filename)
+    if not os.path.exists(out_fp):
+        raise RuntimeError(f'Failed to find passed in directory {out_fp}. Please Investigate.')
+    return out_fp
+
+
 
 def runlist_check(
         input_directory: str,
@@ -414,7 +433,9 @@ def calculate_rpu_calibration_value(
         )
         if len(selection_list) > 1:
             raise RuntimeError('RPU Calculation presupposes a singular directory.')
-        input_directory = selection_list[0]
+        rpu_input_fp = selection_list[0]
+    else:
+        dataset_fp = fp_expansion(input_directory, rpu_fp)
     if calibration_fp is None:
         log.info('Please select the Autofluorescence Calibration Dataset.')
         selection_list = dataset_selection(
@@ -425,18 +446,20 @@ def calculate_rpu_calibration_value(
         if len(selection_list) > 1:
             raise RuntimeError('Autofluorescence Calculation presupposes a singular directory.')
         autofluorescence_fp = selection_list[0]
-    log.change_logging_level('debug')
+    else:
+        autofluorescence_fp = fp_expansion(input_directory, calibration_fp)
     log.debug(f'Selection for RPU Calculation: {dataset_fp}')
     log.debug(f'Selection for Autofluorescence Calculation: {autofluorescence_fp}')
     enqueue_rpu_calculation(
-        rpu_input_fp=input_directory,
-        autofluorescence_input_fp=calibration_fp,
+        rpu_input_fp=dataset_fp,
+        autofluorescence_input_fp=autofluorescence_fp,
     )
 
 
 @app.command()
 def calculate_autofluorescence_calibration_value(
         input_directory: str = None,
+        selected_dataset: str = None,
         filter_criteria=None,
 ):
     """
@@ -452,14 +475,18 @@ def calculate_autofluorescence_calibration_value(
     ConfigOptions()
     if input_directory is None:
         input_directory = ConfigOptions().output_location
-    selection_list = dataset_selection(
-        input_directory=input_directory,
-        filter_criteria=filter_criteria,
-        sort_criteria='alpha',
-    )
-    if len(selection_list) > 1:
-        raise RuntimeError('RPU Calculation presupposes a singular directory.')
-    dataset_fp = selection_list[0]
+    if selected_dataset is None:
+        selection_list = dataset_selection(
+            input_directory=input_directory,
+            filter_criteria=filter_criteria,
+            sort_criteria='alpha',
+        )
+        if len(selection_list) > 1:
+            raise RuntimeError('RPU Calculation presupposes a singular directory.')
+        dataset_fp = selection_list[0]
+    else:
+        # TODO: Path Join and Validation for this dataset right here.
+        dataset_fp = fp_expansion(input_directory, selected_dataset)
     log.change_logging_level('debug')
     log.debug(f'Selection for Autofluorescence Calculation: {dataset_fp}')
     enqueue_autofluorescence_calculation(dataset_fp)
@@ -831,6 +858,27 @@ def beholder(
                     input_directory=output_directory,
                     runlist=runlist,
                 )
+        elif stage == "calculate_autofluorescence_calibration_value":
+            if "calculate_autofluorescence_calibration_value" in stage_settings:
+                calculate_autofluorescence_calibration_value(
+                    input_directory=output_directory,
+                    **stage_settings['calculate_autofluorescence_calibration_value']
+                )
+            else:
+                calculate_autofluorescence_calibration_value(
+                    input_directory=output_directory,
+                )
+        elif stage == "calculate_rpu_calibration_value":
+            if "calculate_rpu_calibration_value" in stage_settings:
+                calculate_rpu_calibration_value(
+                    input_directory=output_directory,
+                    **stage_settings['calculate_rpu_calibration_value']
+                )
+            else:
+                calculate_autofluorescence_calibration_value(
+                    input_directory=output_directory,
+                )
+
         elif stage == "s3_sync_download":
             s3_sync_download(
                 output_directory=output_directory,
