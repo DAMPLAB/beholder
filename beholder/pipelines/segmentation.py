@@ -1,4 +1,5 @@
 import copy
+import datetime
 import csv
 import glob
 import multiprocessing as mp
@@ -83,19 +84,32 @@ def linearize_timestamps(timestamps: List[List[float]]):
     return timestamps
 
 
+def zeropoint_timestamps(timestamps: List[List[float]]):
+    for time_series in timestamps:
+        zeropoint = time_series[0]
+        for index, timestamp in enumerate(time_series):
+            time_series[index] = timestamp - zeropoint
+    return timestamps
+
+
 def parse_write_array_numpy_file(input_fp: str, timestamps: List[float]):
     np_fp = os.path.join(input_fp, 'write_array.npy')
-    flat_timestamps = [item for sublist in timestamps for item in sublist]
     # This is a bit of spackle, should be done at the lowest part of the stack
     # but the tree makes this a bit tricky.
-    flat_timestamps = sorted(flat_timestamps)
     write_array = np.load(np_fp)
-    out_timestamps = []
-    for index, timestamp in enumerate(flat_timestamps):
-        if write_array[index]:
-            out_timestamps.append(timestamp)
-    out_timestamps.reverse()
-    return out_timestamps
+    stride = len(timestamps[0])
+    time_stamp_list = []
+    for index, timeseries in enumerate(timestamps):
+        inner_list = []
+        for local_idx, timestamp in enumerate(timeseries):
+            access_idx = (index * stride) + local_idx
+            if write_array[access_idx]:
+                inner_list.append(timestamp)
+        time_stamp_list.append(inner_list)
+    rev_lst = []
+    for timestamp in time_stamp_list:
+        rev_lst.append(timestamp[::-1])
+    return rev_lst
 
 
 def generate_dummy_timestamps(input_fp: str):
@@ -274,6 +288,26 @@ def segmentation_pipeline(
     return packaged_tiff
 
 
+def package_tiffs(tiff_bundle: Tuple):
+    tiff_file, channels, time_array, index = tiff_bundle
+    array = ingress_tiff_file(tiff_file)
+    if not array.shape[0]:
+        pass
+    wavelengths = [x[0] for x in channels]
+    channel_names = [x[1] for x in channels]
+    ts = [time_array.pop() for _ in range(array.shape[1])]
+    title = Path(tiff_file).stem
+    inner_pack = TiffPackage(
+        img_array=array,
+        tiff_name=title,
+        channel_names=channel_names,
+        channel_wavelengths=wavelengths,
+        tiff_index=index,
+        timestamps=ts,
+    )
+    return inner_pack
+
+
 def enqueue_segmentation(
         input_fp: str,
         do_segment: bool,
@@ -292,6 +326,7 @@ def enqueue_segmentation(
     # themselves I'm throwing my computer into the Charles...
     channels = get_channel_and_wl_data_from_xml_metadata(tree)
     timestamps = get_time_stamps_from_xml_metadata(tree)
+    timestamps = zeropoint_timestamps(timestamps)
     timestamps = linearize_timestamps(timestamps)
     # Some of them do not have the timestamps recorded, and are thus blank.
     # To rectify this, we annotate that these files did not contain timesteps
@@ -309,28 +344,56 @@ def enqueue_segmentation(
     tiff_path = os.path.join(input_fp, 'raw_tiffs')
     tiff_fp = glob.glob(tiff_path + '**/*.tiff')
     sorted_tiffs = sorted(tiff_fp, key=lambda x: int(Path(x).stem))
+    index_list = range(len(sorted_tiffs))
+    sorted_tiffs = zip(sorted_tiffs, channels, time_array, index_list)
+    if not do_single_threaded():
+        pool = mp.Pool()
     # ------------------------------- PACKAGING TIFFS  -------------------------
-    for index, tiff_file in tqdm.tqdm(
-            enumerate(sorted_tiffs),
-            total=len(sorted_tiffs),
-            desc="Packaging Tiffs"
-    ):
-        array = ingress_tiff_file(tiff_file)
-        if not array.shape[0]:
-            continue
-        wavelengths = [x[0] for x in channels[index]]
-        channel_names = [x[1] for x in channels[index]]
-        ts = [time_array.pop() for _ in range(array.shape[1])]
-        title = Path(tiff_file).stem
-        inner_pack = TiffPackage(
-            img_array=array,
-            tiff_name=title,
-            channel_names=channel_names,
-            channel_wavelengths=wavelengths,
-            tiff_index=index,
-            timestamps=ts,
+    nah = True
+    if nah:
+        packaged_tiffs = list(
+            tqdm.tqdm(
+                map(
+                    package_tiffs,
+                    sorted_tiffs,
+                ),
+                total=len(tiff_fp),
+                desc="Packaging Tiffs..."
+            )
         )
-        packaged_tiffs.append(inner_pack)
+    else:
+        packaged_tiffs = list(
+            tqdm.tqdm(
+                pool.imap(
+                    package_tiffs,
+                    sorted_tiffs,
+                ),
+                desc="Packaging Tiffs...",
+                total=len(tiff_fp)
+            )
+        )
+
+        # for index, tiff_file in tqdm.tqdm(
+        #         enumerate(sorted_tiffs),
+        #         total=len(sorted_tiffs),
+        #         desc="Packaging Tiffs"
+        # ):
+        #     array = ingress_tiff_file(tiff_file)
+        #     if not array.shape[0]:
+        #         continue
+        #     wavelengths = [x[0] for x in channels[index]]
+        #     channel_names = [x[1] for x in channels[index]]
+        #     ts = [time_array.pop() for _ in range(array.shape[1])]
+        #     title = Path(tiff_file).stem
+        #     inner_pack = TiffPackage(
+        #         img_array=array,
+        #         tiff_name=title,
+        #         channel_names=channel_names,
+        #         channel_wavelengths=wavelengths,
+        #         tiff_index=index,
+        #         timestamps=ts,
+        #     )
+        #     packaged_tiffs.append(inner_pack)
     # ---------------------------- PERFORM SEGMENTATION  -----------------------
     output_location = os.path.join(input_fp, 'segmentation_output')
     if not os.path.exists(output_location):
@@ -344,17 +407,17 @@ def enqueue_segmentation(
                         packaged_tiffs
                     ),
                     total=len(packaged_tiffs),
-                    desc="Performing Segmentation"
+                    desc="Generating Data..."
                 )
             )
         else:
-            with mp.get_context("spawn").Pool() as pool:
-                segmentation_results = list(
-                    tqdm.tqdm(
-                        pool.imap(segmentation_pipeline, packaged_tiffs),
-                        total=len(packaged_tiffs)
-                    )
+            segmentation_results = list(
+                tqdm.tqdm(
+                    pool.imap(segmentation_pipeline, packaged_tiffs),
+                    total=len(packaged_tiffs),
+                    desc="Generating Data..."
                 )
+            )
     else:
         segmentation_results = packaged_tiffs
     # ------------------- EXIT GRACEFULLY IF SEGMENTATION FAILED  --------------
@@ -372,7 +435,7 @@ def enqueue_segmentation(
     # ---------------- ENSURE OUTPUT DIRECTORY EXISTS AND WRITE OUT  -----------
     # Write out summary statistics
     # Write out more involved channel by channel statistics.
-    for i, result in enumerate(tqdm.tqdm(segmentation_results)):
+    for i, result in enumerate(tqdm.tqdm(segmentation_results, desc="Writing Out Data Analysis...")):
         frame_output = os.path.join(output_location, f'{i + 1}')
         if not os.path.exists(frame_output):
             os.mkdir(frame_output)
@@ -397,3 +460,6 @@ def enqueue_segmentation(
         ):
             input_args = index, segmentation_result, output_location
             generate_frame_visualization(input_args)
+    if not do_single_threaded():
+        pool.close()
+        pool.join()

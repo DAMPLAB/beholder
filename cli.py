@@ -31,6 +31,7 @@ from beholder.pipelines import (
     enqueue_rpu_calculation,
     enqueue_lf_analysis,
     enqueue_figure_generation,
+    enqueue_autofluorescence_calculation,
 )
 
 from beholder.signal_processing.sigpro_utility import (
@@ -385,6 +386,55 @@ def check_panel_detection(
 @app.command()
 def calculate_rpu_calibration_value(
         input_directory: str = None,
+        rpu_fp: str = None,
+        calibration_fp: str = None,
+        filter_criteria=None,
+):
+    """
+
+    Args:
+        input_directory:
+        filter_criteria:
+        runlist:
+
+    Returns:
+
+    """
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions().output_location
+    if rpu_fp is None:
+        log.info('Please select the RPU Calibration Dataset.')
+        selection_list = dataset_selection(
+            input_directory=input_directory,
+            filter_criteria=filter_criteria,
+            sort_criteria='alpha',
+        )
+        if len(selection_list) > 1:
+            raise RuntimeError('RPU Calculation presupposes a singular directory.')
+        input_directory = selection_list[0]
+    if calibration_fp is None:
+        log.info('Please select the Autofluorescence Calibration Dataset.')
+        selection_list = dataset_selection(
+            input_directory=input_directory,
+            filter_criteria=filter_criteria,
+            sort_criteria='alpha',
+        )
+        if len(selection_list) > 1:
+            raise RuntimeError('Autofluorescence Calculation presupposes a singular directory.')
+        autofluorescence_fp = selection_list[0]
+    log.change_logging_level('debug')
+    log.debug(f'Selection for RPU Calculation: {dataset_fp}')
+    log.debug(f'Selection for Autofluorescence Calculation: {autofluorescence_fp}')
+    enqueue_rpu_calculation(
+        rpu_input_fp=input_directory,
+        autofluorescence_input_fp=calibration_fp,
+    )
+
+
+@app.command()
+def calculate_autofluorescence_calibration_value(
+        input_directory: str = None,
         filter_criteria=None,
 ):
     """
@@ -409,8 +459,8 @@ def calculate_rpu_calibration_value(
         raise RuntimeError('RPU Calculation presupposes a singular directory.')
     dataset_fp = selection_list[0]
     log.change_logging_level('debug')
-    log.debug(f'Selection for RPU Calculation: {dataset_fp}')
-    enqueue_rpu_calculation(dataset_fp)
+    log.debug(f'Selection for Autofluorescence Calculation: {dataset_fp}')
+    enqueue_autofluorescence_calculation(dataset_fp)
 
 
 @app.command()

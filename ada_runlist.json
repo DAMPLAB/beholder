@@ -17,12 +17,16 @@
   "num_observations": [
   ],
   "stages": [
-    "segmentation"
+    "segmentation",
+    "run_lf_analysis"
   ],
   "settings": {
     "segmentation": {
       "do_segment": false,
       "do_defocus": false
+    },
+    "run_lf_analysis": {
+      "calibration_rpu_dataset": "3-RPU_YFP_M9Plain_1mMIPTG_10h"
     }
   },
   "run_name": "1_5_for_lauren_paper",
