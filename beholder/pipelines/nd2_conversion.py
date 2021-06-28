@@ -420,4 +420,5 @@ def enqueue_brute_force_conversion(
             corrected_metadata = metadata_correction(metadata)
             out_file.write(corrected_metadata)
     # javabridge.kill_vm()
+    # javabridge.kill_vm()'
 

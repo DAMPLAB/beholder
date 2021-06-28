@@ -278,6 +278,8 @@ def colorize_frame(input_frame: np.ndarray, color: str) -> np.ndarray:
         input_frame[:, :, (0, 1)] = 0
     if color == 'red':
         input_frame[:, :, (1, 2)] = 0
+    if color == 'yellow':
+        input_frame[:, :, 2] = 0
     return input_frame
 
 
@@ -391,6 +393,22 @@ def combine_frame(
         beta,
         gamma,
     )
+
+def jump_color(
+        input_frame: np.ndarray,
+        color_name: str,
+        value: int,
+):
+    if color_name == 'red':
+        input_frame[:, :, 0] *= value
+    if color_name == 'yellow':
+        input_frame[:, :, (0, 1)] *= value
+    if color_name == 'green':
+        input_frame[:, :, 1] *= value
+    if color_name == 'blue':
+        input_frame[:, :, 2] *= value
+
+    return input_frame
 
 def histogram_equalization(input_frame: np.ndarray):
     out_frame = downsample_image(input_frame)

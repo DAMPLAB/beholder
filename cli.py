@@ -32,6 +32,7 @@ from beholder.pipelines import (
     enqueue_lf_analysis,
     enqueue_figure_generation,
     enqueue_autofluorescence_calculation,
+    enqueue_panel_based_gif_generation,
 )
 
 from beholder.signal_processing.sigpro_utility import (
@@ -341,6 +342,7 @@ def runlist_check(
             return False
         return True
 
+
 # -------------------------- Date Generation Commands --------------------------
 @app.command()
 def check_panel_detection(
@@ -530,6 +532,40 @@ def perform_lf_analysis(
         input_datasets=bound_datasets,
         calibration_rpu_dataset_fp=calibration_rpu_dataset_fp,
         runlist_fp=runlist,
+    )
+
+
+@app.command()
+def generate_panel_based_gifs(
+        runlist: str,
+        input_directory: str = None,
+        alpha: int = 12,
+        beta: int = 0,
+):
+    """
+
+    Args:
+        runlist:
+        input_directory:
+        alpha:
+        beta:
+
+    Returns:
+
+    """
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions().output_location
+    bound_datasets = runlist_validation_and_parsing(
+        input_directory=input_directory,
+        runlist_fp=runlist,
+        files=False,
+    )
+    enqueue_panel_based_gif_generation(
+        input_datasets=bound_datasets,
+        runlist_fp=runlist,
+        alpha=alpha,
+        beta=beta,
     )
 
 
@@ -811,9 +847,22 @@ def beholder(
                     input_directory=output_directory,
                     runlist=runlist,
                 )
+        elif stage == 'generate_panel_based_gifs':
+            if "generate_panel_based_gifs" in stage_settings:
+                generate_panel_based_gifs(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings['run_lf_analysis']
+                )
+            else:
+                generate_panel_based_gifs(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                )
         else:
             log.warning(f'Stage {stage} not recognized as valid pipeline stage.')
         log.info(f'Finishing Stage: {stage}...')
+
 
 @app.command()
 def batchholder(
@@ -854,18 +903,15 @@ def batchholder(
         # Then we want to make sure that all of our datasets exist where we say
         # they should be, because I'm not constantly dicking with this.
         if not runlist_check(
-            input_directory=nd2_directory,
-            runlist_fp=runlist,
-            files=True,
+                input_directory=nd2_directory,
+                runlist_fp=runlist,
+                files=True,
         ):
             raise RuntimeError(
                 f'Unable to find datasets for {runlist}. Please investigate.'
             )
     for runlist in list(runlist_filepaths):
-        print('Hello')
         beholder(runlist=runlist)
-
-
 
 
 if __name__ == "__main__":

@@ -37,3 +37,7 @@ from .generate_figures import (
 from .autofluoresence_conversion import (
     enqueue_autofluorescence_calculation,
 )
+
+from .gif_generator import (
+    enqueue_panel_based_gif_generation,
+)

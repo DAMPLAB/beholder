@@ -14,10 +14,12 @@ import tiffile
 
 
 # --------------------------- Utility Functionality ----------------------------
-def ingress_tiff_file(input_fn: str):
+def ingress_tiff_file(input_fn: str, eight_bit: bool = False):
     tiff = tiffile.imread(input_fn)
-    uint16_cast = (tiff * 65536).round().astype(np.uint16)
-    return uint16_cast
+    if eight_bit:
+        return tiff
+    else:
+        return (tiff * 65536).round().astype(np.uint16)
 
 
 def get_channel_and_wl_data_from_xml_metadata(xml_tree: ETree.ElementTree):
@@ -56,6 +58,7 @@ def get_channel_data_from_xml_metadata(xml_tree: ETree.ElementTree):
                         channel_st.add(name)
     return list(channel_st)
 
+
 def get_time_stamps_from_xml_metadata(xml_tree: ETree.ElementTree):
     metadata_root = xml_tree.getroot()
     master_list = []
@@ -72,6 +75,7 @@ def get_time_stamps_from_xml_metadata(xml_tree: ETree.ElementTree):
                     inner_list = sorted(inner_list)
                     master_list.append(inner_list)
     return master_list
+
 
 def get_channel_name_from_wavelength(wavelength_nm: float):
     wavelength_conversion_lut = {
