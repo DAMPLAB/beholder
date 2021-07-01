@@ -34,8 +34,7 @@ def enqueue_rpu_calculation(
         'fl_mean_value': df['YFP_fluorescence'].mean() - correction_df['fl_mean_value'],
         'fl_min_value': df['YFP_fluorescence'].min() - correction_df['fl_min_value'],
         'fl_max_value': df['YFP_fluorescence'].max() - correction_df['fl_max_value'],
-        'std_dev_median_value': df['YFP_std_dev'].median() - correction_df['std_dev_median_value'],
-        'std_dev_mean_value': df['YFP_std_dev'].mean() - correction_df['std_dev_mean_value'],
+        'fl_std_dev': df['YFP_fluorescence'].std() - correction_df['fl_std_dev'],
     }
     write_df = pd.DataFrame(out_dict)
     super_summation_path = os.path.join(rpu_input_fp, 'rpu_correlation_value.csv')

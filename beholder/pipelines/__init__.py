@@ -41,3 +41,15 @@ from .autofluoresence_conversion import (
 from .gif_generator import (
     enqueue_panel_based_gif_generation,
 )
+
+from .wide_analysis import (
+    enqueue_wide_analysis,
+)
+
+from .long_analysis import (
+    enqueue_long_analysis,
+)
+
+from .porcelain_check import (
+    enqueue_porcelain_conversion,
+)
