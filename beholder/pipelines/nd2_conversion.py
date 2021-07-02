@@ -7,9 +7,9 @@ from typing import (
 )
 from xml.etree import ElementTree as ETree
 
-import nd2reader
+# import nd2reader
 import numpy as np
-import pims_nd2
+# import pims_nd2
 import tiffile
 import tqdm
 

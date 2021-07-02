@@ -1,16 +1,20 @@
 {
   "input_datasets": [
-    "3-SR_1_9_6hPre-C_PlainM9_TS_MC6"
+    "Supp-NEB_DH10_Beta_PreCult_M9_MoMicroscope_MC2"
   ],
   "num_observations": [
   ],
   "stages": [
-    "segmentation"
+    "calculate_autofluorescence_calibration_value",
+    "calculate_rpu_calibration_value"
   ],
   "settings": {
-    "segmentation": {
-      "do_segment": false,
-      "do_defocus": false
+    "calculate_autofluorescence_calibration_value": {
+      "selected_dataset": "Supp-NEB_DH10_Beta_PreCult_M9_MoMicroscope_MC2"
+    },
+    "calculate_rpu_calibration_value": {
+      "rpu_fp": "3-RPU_YFP_M9Plain_1mMIPTG_10h",
+      "calibration_fp": "Supp-NEB_DH10_Beta_PreCult_M9_MoMicroscope_MC2"
     }
   }
 }

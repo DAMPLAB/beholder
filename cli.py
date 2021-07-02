@@ -33,6 +33,9 @@ from beholder.pipelines import (
     enqueue_figure_generation,
     enqueue_autofluorescence_calculation,
     enqueue_panel_based_gif_generation,
+    enqueue_long_analysis,
+    enqueue_wide_analysis,
+    enqueue_porcelain_conversion,
 )
 
 from beholder.signal_processing.sigpro_utility import (
@@ -561,6 +564,78 @@ def perform_lf_analysis(
         runlist_fp=runlist,
     )
 
+@app.command()
+def perform_long_analysis(
+        runlist: str,
+        input_directory: str = None,
+):
+    """
+
+    Args:
+        runlist:
+        calibration_rpu_dataset:
+        input_directory:
+
+    Returns:
+
+    """
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions().output_location
+    bound_datasets = runlist_validation_and_parsing(
+        input_directory=input_directory,
+        runlist_fp=runlist,
+        files=False,
+    )
+    enqueue_long_analysis(
+        input_datasets=bound_datasets,
+        runlist_fp=runlist,
+    )
+
+@app.command()
+def perform_wide_analysis(
+        runlist: str,
+        calibration_rpu_dataset: str,
+        calibration_af_dataset: str,
+        input_directory: str = None,
+):
+    """
+
+    Args:
+        runlist:
+        calibration_rpu_dataset:
+        input_directory:
+
+    Returns:
+
+    """
+    ConfigOptions()
+    if input_directory is None:
+        input_directory = ConfigOptions().output_location
+    bound_datasets = runlist_validation_and_parsing(
+        input_directory=input_directory,
+        runlist_fp=runlist,
+        files=False,
+    )
+    calibration_rpu_dataset_fp = os.path.join(
+        input_directory,
+        calibration_rpu_dataset,
+        'rpu_correlation_value.csv',
+    )
+    af_dataset_fp = os.path.join(
+        input_directory,
+        calibration_af_dataset,
+        'autofluorescence_correlation_value.csv',
+    )
+    enqueue_wide_analysis(
+        input_datasets=bound_datasets,
+        calibration_rpu_dataset_fp=calibration_rpu_dataset_fp,
+        calibration_autofluoresence_dataset_fp=af_dataset_fp,
+        runlist_fp=runlist,
+    )
+
+
+
 
 @app.command()
 def generate_panel_based_gifs(
@@ -878,7 +953,29 @@ def beholder(
                 calculate_autofluorescence_calibration_value(
                     input_directory=output_directory,
                 )
-
+        elif stage == "perform_long_analysis":
+            if "perform_long_analysis" in stage_settings:
+                perform_long_analysis(
+                    input_directory=output_directory,
+                    **stage_settings['perform_long_analysis']
+                )
+            else:
+                perform_long_analysis(
+                    runlist=runlist,
+                    input_directory=output_directory,
+                )
+        elif stage == "perform_wide_analysis":
+            if "perform_wide_analysis" in stage_settings:
+                perform_wide_analysis(
+                    input_directory=output_directory,
+                    runlist=runlist,
+                    **stage_settings['perform_wide_analysis']
+                )
+            else:
+                perform_wide_analysis(
+                    runlist=runlist,
+                    input_directory=output_directory,
+                )
         elif stage == "s3_sync_download":
             s3_sync_download(
                 output_directory=output_directory,
@@ -914,13 +1011,13 @@ def beholder(
 
 @app.command()
 def batchholder(
-        bachlist_fp: str,
+        batchlist_fp: str,
         nd2_directory: str = None,
 ):
     """
 
     Args:
-        bachlist_fp:
+        batchlist_fp:
         nd2_directory:
         output_directory:
         filter_criteria:
@@ -935,10 +1032,10 @@ def batchholder(
         nd2_directory = ConfigOptions().nd2_location
         output_directory = ConfigOptions().output_location
     log.info('Batchholder START.')
-    if not os.path.isfile(bachlist_fp):
-        raise RuntimeError(f'Cannot find batch runlist at {bachlist_fp}')
+    if not os.path.isfile(batchlist_fp):
+        raise RuntimeError(f'Cannot find batch runlist at {batchlist_fp}')
     # Extract our stages.
-    with open(bachlist_fp, 'r') as input_file:
+    with open(batchlist_fp, 'r') as input_file:
         batch_list = json.load(input_file)
         runlist_abs_path = batch_list['absolute_path']
         runlists = batch_list['runlists']
@@ -958,6 +1055,11 @@ def batchholder(
             raise RuntimeError(
                 f'Unable to find datasets for {runlist}. Please investigate.'
             )
+    enqueue_porcelain_conversion(
+        nd2_directory=nd2_directory,
+        output_directory=output_directory,
+        batchlist_fp=batchlist_fp,
+    )
     for runlist in list(runlist_filepaths):
         beholder(runlist=runlist)
 

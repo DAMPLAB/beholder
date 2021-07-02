@@ -21,6 +21,7 @@ class ConfigOptions(metaclass=SingletonBaseClass):
     single_thread_debug: bool = False
     visualization_debug: bool = False
     test_write: bool = True
+    prior_runlist_fp: str = None
 
     nd2_location: str = None
     output_location: str = None
@@ -83,11 +84,12 @@ def get_nd2_file_location() -> str:
 def get_output_file_location() -> str:
     return ConfigOptions().output_location
 
+
 def get_analysis_location(runlist_fp: str = None) -> str:
-    if ConfigOptions().analysis_location is None:
+    if ConfigOptions().analysis_location is None or ConfigOptions().prior_runlist_fp != runlist_fp:
         tl_dir = get_output_file_location()
-        runtime = datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-        if runlist_fp is None:
+        runtime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        if runlist_fp is not None:
             with open(runlist_fp, 'r') as input_runlist:
                 runlist_dict = json.load(input_runlist)
                 run_name = runlist_dict['run_name']
@@ -106,12 +108,10 @@ def get_analysis_location(runlist_fp: str = None) -> str:
         if not os.path.isdir(output_path):
             os.makedirs(output_path)
         ConfigOptions().analysis_location = output_path
+        ConfigOptions().prior_runlist_fp = runlist_fp
         return ConfigOptions().analysis_location
     else:
         return ConfigOptions().analysis_location
-
-
-
 
 
 def beholder_text(input_text: str, color: str = '#49306B'):
