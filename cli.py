@@ -36,6 +36,7 @@ from beholder.pipelines import (
     enqueue_long_analysis,
     enqueue_wide_analysis,
     enqueue_porcelain_conversion,
+    enqueue_dataset_split,
 )
 
 from beholder.signal_processing.sigpro_utility import (
@@ -312,6 +313,7 @@ def runlist_validation_and_parsing(
             input_directories.remove(bad_dir)
         return input_directories
 
+
 def fp_expansion(
         input_directory: str,
         filename: str,
@@ -329,7 +331,6 @@ def fp_expansion(
     if not os.path.exists(out_fp):
         raise RuntimeError(f'Failed to find passed in directory {out_fp}. Please Investigate.')
     return out_fp
-
 
 
 def runlist_check(
@@ -496,6 +497,44 @@ def calculate_autofluorescence_calibration_value(
 
 
 @app.command()
+def split_input_dataset(
+        input_directory: str = None,
+        output_directory: str = None,
+        selected_dataset: str = None,
+        runlist_fp: str = None,
+):
+    """
+
+    Args:
+        input_directory:
+        output_directory:
+        selected_dataset:
+        runlist_fp:
+        panel_distribution:
+
+    Returns:
+
+    """
+    ConfigOptions()
+    if input_directory is None or output_directory is None:
+        input_directory = ConfigOptions().nd2_location
+        output_directory = ConfigOptions().output_location
+    conversion_list = runlist_validation_and_parsing(
+        input_directory=input_directory,
+        runlist_fp=runlist_fp,
+        files=True,
+    )
+    log.debug(f'Conversion list: {conversion_list}')
+    enqueue_dataset_split(
+        input_directory=input_directory,
+        output_directory=output_directory,
+        dataset=selected_dataset,
+        runlist_fp=runlist_fp,
+    )
+
+
+
+@app.command()
 def calculate_frame_drift(
         input_directory: str = None,
         render_videos: bool = True,
@@ -564,6 +603,7 @@ def perform_lf_analysis(
         runlist_fp=runlist,
     )
 
+
 @app.command()
 def perform_long_analysis(
         runlist: str,
@@ -591,6 +631,7 @@ def perform_long_analysis(
         input_datasets=bound_datasets,
         runlist_fp=runlist,
     )
+
 
 @app.command()
 def perform_wide_analysis(
@@ -633,8 +674,6 @@ def perform_wide_analysis(
         calibration_autofluoresence_dataset_fp=af_dataset_fp,
         runlist_fp=runlist,
     )
-
-
 
 
 @app.command()
@@ -952,6 +991,17 @@ def beholder(
             else:
                 calculate_autofluorescence_calibration_value(
                     input_directory=output_directory,
+                )
+        elif stage == "split_input_dataset":
+            if "split_input_dataset" in stage_settings:
+                split_input_dataset(
+                    input_directory=output_directory,
+                    **stage_settings['split_input_dataset']
+                )
+            else:
+                raise RuntimeError(
+                    'Unable to perform dataset split without panel distribution'
+                    'being annotated within runlist. Please investigate.'
                 )
         elif stage == "perform_long_analysis":
             if "perform_long_analysis" in stage_settings:

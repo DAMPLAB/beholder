@@ -53,3 +53,7 @@ from .long_analysis import (
 from .porcelain_check import (
     enqueue_porcelain_conversion,
 )
+
+from .split_dataset import (
+    enqueue_dataset_split,
+)
