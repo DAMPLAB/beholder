@@ -2,10 +2,10 @@ import os
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-token = '***REMOVED***'
+token = 'xoxb-22974935442-1562739401110-y2hA1mCP4aZKIbQdnMV36bJ2'
 client = WebClient(token=token)
 
-andre_channel = '***REMOVED***'
+andre_channel = 'C01GN8U5GTX'
 
 
 def slack_message(input_text: str, channel: str = '#andre'):

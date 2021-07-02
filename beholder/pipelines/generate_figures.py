@@ -8,30 +8,26 @@ Written by W.R. Jackson <wrjackso@bu.edu>, DAMP Lab 2020
 --------------------------------------------------------------------------------
 '''
 import datetime
+import logging
 import os
 from typing import (
     List,
 )
+
+import imageio
 import matplotlib
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
-from scipy import stats
-from scipy.optimize import curve_fit
-from scipy.interpolate import UnivariateSpline
-from sklearn.linear_model import LinearRegression
+import pandas as pd
 import seaborn as sns
-import matplotlib.patches as patches
+from PIL import (
+    Image,
+)
+from scipy import stats
+
 from beholder.utils import (
     BLogger,
 )
-from PIL import (
-    Image,
-    ImageDraw,
-)
-import imageio
-
-import logging
 
 LOG = BLogger()
 logging.getLogger('matplotlib.font_manager').disabled = True

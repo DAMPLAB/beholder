@@ -7,9 +7,9 @@ from typing import (
 )
 from xml.etree import ElementTree as ETree
 
-import nd2reader
+# import nd2reader
 import numpy as np
-import pims_nd2
+# import pims_nd2
 import tiffile
 import tqdm
 
@@ -20,8 +20,10 @@ from beholder.utils import (
     BLogger,
 )
 import time
+
 log = BLogger()
 JAVA_FLAG = False
+
 
 # --------------------------- UTILITY FUNCTIONALITY ----------------------------
 def parse_xml_metadata(xml_string, array_order='tyxc'):
@@ -53,7 +55,21 @@ def enqueue_nd2_conversion(
         conversion_list: List[str],
         output_directory: str,
         force_reconversion: bool = False,
+        forced_rename: str = None,
+        split_frames: List[int] = None,
 ):
+    """
+
+    Args:
+        conversion_list:
+        output_directory:
+        force_reconversion:
+        forced_rename:
+        split_frames:
+
+    Returns:
+
+    """
     try:
         import bioformats as bf
         import javabridge
@@ -90,7 +106,8 @@ def enqueue_nd2_conversion(
     )
     blank_offset = 0
     for input_fp in conversion_list:
-        out_dir = os.path.join(output_directory, Path(input_fp).stem)
+        out_name = forced_rename if forced_rename is not None else Path(input_fp).stem
+        out_dir = os.path.join(output_directory, out_name)
         if not force_reconversion:
             if os.path.exists(out_dir):
                 log.info(f'Prior result found for dataset: {input_fp}. Skipping.')
@@ -140,8 +157,10 @@ def enqueue_nd2_conversion(
         log.debug(f'Detected Channels: {channels}')
         log.debug(f'------------------')
         frame_writes = np.zeros(len(sizes) * num_of_frames)
+        iterator = split_frames if split_frames is not None else range(len(names))
+        iter_counter = 0
         for i in tqdm.tqdm(
-                range(len(names)),
+                iterator,
                 desc=f"Converting {Path(input_fp).stem}..."):
             output_array = []
             for j in range(num_of_frames):
@@ -167,8 +186,10 @@ def enqueue_nd2_conversion(
             if len(out_array.shape) == 3:
                 log.debug(f'Out Array being transposed from 0, 1, 2 -> 1, 0, 2')
                 out_array = out_array.transpose(1, 0, 2)
-            save_path = os.path.join(tiff_directory, f'{i}.tiff')
+            out_file = f'{iter_counter}.tiff' if split_frames is not None else f'{i}.tiff'
+            save_path = os.path.join(tiff_directory, out_file)
             tiffile.imsave(save_path, out_array)
+            iter_counter += 1
         metadata_save_path = os.path.join(out_dir, f'metadata.xml')
         write_save_path = os.path.join(out_dir, f'write_array.npy')
         with open(metadata_save_path, 'w') as out_file:
@@ -305,6 +326,7 @@ def corrupt_metadata_fallback_step_two(
             corrected_metadata = metadata_correction(prior_metadata)
             out_file.write(corrected_metadata)
 
+
 # --------------------------- BRUTE FORCE CONVERSION ---------------------------
 def filter_nonfluorescent_channel(input_frame: np.ndarray):
     if input_frame[0][0][1] == 0.:
@@ -407,7 +429,7 @@ def enqueue_brute_force_conversion(
             frame_stride = i * observation_length
             # Sam took a grey shot but not a channel shot and I can't reckon.
             observation_grouping = master_array[
-                                   frame_stride:frame_stride+observation_length
+                                   frame_stride:frame_stride + observation_length
                                    ]
             clean_out = list(filter(filter_nonfluorescent_channel, observation_grouping))
             if clean_out:
@@ -421,4 +443,3 @@ def enqueue_brute_force_conversion(
             out_file.write(corrected_metadata)
     # javabridge.kill_vm()
     # javabridge.kill_vm()'
-
